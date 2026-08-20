@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 HEADER_RE = re.compile(r'^(#{1,6})\s+(.+)$')
+HEADER_ANY_RE = re.compile(r'^\s*#{1,6}\s')
 CODEBLOCK_RE = re.compile(r'^```')
 
 def analyze(lines):
@@ -161,29 +162,298 @@ def print_report(header_issues, trailing, codeblock_issue):
         print("\n⚠️ UWAGA: Nieparzysta liczba bloków ``` — dokument może być uszkodzony!")
 
 
+def clean_colon_codeblocks(lines):
+    """Usuwa WSZYSTKIE puste linie między linią kończącą się na ':' a blokiem kodu ```"""
+    new_lines = []
+    removed_count = 0
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        raw_line = lines[i]
+        current_line = raw_line.rstrip("\n\r")
+
+        new_lines.append(raw_line)
+
+        # Jeśli linia kończy się na ':' 
+        if current_line.endswith(":") and not current_line.lstrip().startswith("```"):
+            j = i + 1
+            empty_lines_found = 0
+            while j < n and lines[j].strip() == "":
+                empty_lines_found += 1
+                j += 1
+
+            if j < n and CODEBLOCK_RE.match(lines[j].lstrip()):
+                if empty_lines_found > 0:
+                    print(f"✓ Linia {i+1}: usunięto {empty_lines_found} pustych linii po ':'")
+                    removed_count += empty_lines_found
+                
+                # Przeskakujemy wszystkie puste linie (nie dodajemy żadnej)
+                i = j - 1
+
+        i += 1
+
+    if removed_count == 0:
+        print("✓ Nie znaleziono pustych linii do usunięcia po ':'.")
+
+    return new_lines
+    
+    
+SEPARATORS = {"***", "---", "___"}
+
+
+def _header_level(line):
+    """Zwraca poziom nagłówka (1-6) dla linii pasującej do HEADER_ANY_RE, albo None."""
+    m = HEADER_ANY_RE.match(line)
+    if not m:
+        return None
+    level = 0
+    for ch in line.lstrip():
+        if ch == "#":
+            level += 1
+        else:
+            break
+    return level if 1 <= level <= 6 else None
+
+
+def add_header_separators(lines):
+    """
+    Reguły, egzekwowane łącznie:
+
+      1) Przed KAŻDYM nagłówkiem (poza pierwszą linią całego dokumentu) ma być
+         co najmniej jedna pusta linia. Linia otwierająca lub zamykająca blok
+         kodu ``` liczy się przy tym jak pusta linia (jest niewidoczna po
+         wyrenderowaniu) — ale sama nigdy nie jest ruszana ani przesuwana.
+
+      2) Separator '***' wolno mieć TYLKO między nagłówkiem a kolejnym
+         nagłówkiem o RÓWNYM LUB PŁYTSZYM poziomie i tylko gdy jest między
+         nimi realna treść — nigdy między nagłówkiem a kolejnym GŁĘBSZYM.
+         Gdy jest wskazany, dostaje dokładnie jedną pustą linię przed i po
+         (to nadpisuje regułę 1 dla samego separatora). Brakujący separator
+         jest dodawany, niedozwolony usuwany, źle rozstawiony poprawiany.
+
+      3) "Separator rozwinięty": dwie linie '***' z treścią pomiędzy nimi
+         (bez nagłówka w środku), gdzie pierwsza '***' nie ma pustej linii
+         zaraz po sobie, a druga nie ma pustej linii zaraz przed sobą. Taki
+         blok jest traktowany jako całość — zwykła, nietykalna treść — nigdy
+         nie jest dzielony ani zarządzany jak zwykły separator.
+
+    Bloki kodu ``` ``` `` są całkowicie nietykalne.
+    """
+    n = len(lines)
+
+    in_code = [False] * n
+    inside_code = False
+    for i in range(n):
+        if lines[i].strip().startswith("```"):
+            in_code[i] = True
+            inside_code = not inside_code
+            continue
+        in_code[i] = inside_code
+
+    headers = []
+    for i in range(n):
+        if in_code[i]:
+            continue
+        level = _header_level(lines[i].rstrip("\n\r"))
+        if level is not None:
+            headers.append((i, level))
+
+    if not headers:
+        return lines[:]
+
+    # --- Wykrywanie "separatorów rozwiniętych" ---
+    all_seps = [i for i in range(n) if not in_code[i] and lines[i].strip() in SEPARATORS]
+    protected = set()
+    si = 0
+    while si < len(all_seps) - 1:
+        p, q = all_seps[si], all_seps[si + 1]
+        no_blank_after_p = p + 1 < n and lines[p + 1].strip() != ""
+        no_blank_before_q = q - 1 >= 0 and lines[q - 1].strip() != ""
+        header_between = any(
+            not in_code[k] and _header_level(lines[k].rstrip("\n\r")) is not None
+            for k in range(p + 1, q)
+        )
+        if no_blank_after_p and no_blank_before_q and not header_between:
+            protected.add(p)
+            protected.add(q)
+            si += 2
+        else:
+            si += 1
+
+    def strip_tail(seg_start, seg_end):
+        """Cofa się od seg_end. Zwraca (core_end, sep_idx_lub_None, blanks_before,
+        real_blanks_after, fence_after) - fence_after mówi, czy granicę core
+        wyznaczyło ogrodzenie ``` (a nie prawdziwa pusta linia)."""
+        j = seg_end
+        real_blanks_after = 0
+        while j > seg_start and not in_code[j - 1] and lines[j - 1].strip() == "":
+            real_blanks_after += 1
+            j -= 1
+
+        fence_after = (
+            real_blanks_after == 0
+            and j > seg_start
+            and lines[j - 1].strip().startswith("```")
+        )
+
+        if (
+            j > seg_start
+            and not in_code[j - 1]
+            and lines[j - 1].strip() in SEPARATORS
+            and (j - 1) not in protected
+        ):
+            sep_idx = j - 1
+            j -= 1
+            blanks_before = 0
+            while j > seg_start and not in_code[j - 1] and lines[j - 1].strip() == "":
+                blanks_before += 1
+                j -= 1
+            return j, sep_idx, blanks_before, real_blanks_after, fence_after
+
+        return j, None, 0, real_blanks_after, fence_after
+
+    added_count = 0
+    removed_count = 0
+    normalized_count = 0
+    spaced_count = 0
+    specs = []
+
+    def process_segment(seg_start, seg_end, header_line_no, level_a, level_b):
+        nonlocal added_count, removed_count, normalized_count, spaced_count
+        core_end, sep_idx, blanks_before, real_blanks_after, fence_after = strip_tail(seg_start, seg_end)
+        has_content = any(lines[k].strip() != "" for k in range(seg_start, core_end))
+        # jeśli tuż przed core_end stoi zamykające *** separatora rozwiniętego,
+        # ono już wizualnie pełni rolę granicy - nie dokładamy drugiego
+        tail_is_protected = core_end > seg_start and (core_end - 1) in protected
+        want_separator = (
+            has_content
+            and (level_a is not None)
+            and (level_b <= level_a)
+            and not tail_is_protected
+        )
+
+        if sep_idx is not None and not want_separator:
+            removed_count += 1
+            reason = "brak treści" if not has_content else "kolejny nagłówek jest głębszy"
+            print(f"✓ Usunięto *** w linii {sep_idx + 1} (nagłówek w linii {header_line_no} — {reason}, separator tam niedozwolony)")
+        elif sep_idx is None and want_separator:
+            added_count += 1
+            print(f"✓ Dodano *** przed nagłówkiem w linii {header_line_no}")
+        elif sep_idx is not None and want_separator:
+            if blanks_before != 1 or real_blanks_after != 1:
+                normalized_count += 1
+                print(f"✓ Poprawiono odstępy wokół separatora *** przed nagłówkiem w linii {header_line_no}")
+        else:  # sep_idx is None and not want_separator
+            if real_blanks_after == 0 and not fence_after:
+                spaced_count += 1
+                print(f"✓ Dodano brakującą pustą linię przed nagłówkiem w linii {header_line_no}")
+
+        # czy trzeba doklejać pustą linię po core (gdy nie ma separatora)?
+        need_blank_line = not (real_blanks_after == 0 and fence_after)
+        specs.append((seg_start, core_end, want_separator, need_blank_line))
+
+    first_idx, first_level = headers[0]
+    if first_idx > 0:
+        process_segment(0, first_idx, first_idx + 1, None, first_level)
+
+    for (idx_a, level_a), (idx_b, level_b) in zip(headers, headers[1:]):
+        process_segment(idx_a + 1, idx_b, idx_b + 1, level_a, level_b)
+
+    new_lines = []
+    spec_i = 0
+
+    def emit_tail(want_separator, need_blank_line):
+        if want_separator:
+            new_lines.append("\n"); new_lines.append("***\n"); new_lines.append("\n")
+        elif need_blank_line:
+            new_lines.append("\n")
+        # w przeciwnym razie (ogrodzenie kodu tuż przed nagłówkiem) nic nie doklejamy
+
+    if first_idx > 0:
+        seg_start, core_end, want_separator, need_blank_line = specs[spec_i]
+        spec_i += 1
+        new_lines.extend(lines[seg_start:core_end])
+        emit_tail(want_separator, need_blank_line)
+
+    for i, (idx, _level) in enumerate(headers):
+        new_lines.append(lines[idx])
+        if i < len(headers) - 1:
+            seg_start, core_end, want_separator, need_blank_line = specs[spec_i]
+            spec_i += 1
+            new_lines.extend(lines[seg_start:core_end])
+            emit_tail(want_separator, need_blank_line)
+
+    new_lines.extend(lines[headers[-1][0] + 1:])
+
+    if added_count:
+        print(f"✓ Dodano {added_count} separatorów ***.")
+    if removed_count:
+        print(f"✓ Usunięto {removed_count} niedozwolonych separatorów ***.")
+    if normalized_count:
+        print(f"✓ Poprawiono odstępy wokół {normalized_count} istniejących separatorów ***.")
+    if spaced_count:
+        print(f"✓ Dodano {spaced_count} brakujących pustych linii przed nagłówkami.")
+    if not (added_count or removed_count or normalized_count or spaced_count):
+        print("✓ Nie znaleziono niczego do poprawy — separatory i odstępy są już zgodne z regułami.")
+
+    return new_lines
+
+
+def export_headers_to_txt(headers, output_path):
+    """Eksportuje nagłówki w formie drzewa do pliku .txt"""
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("STRUKTURA NAGŁÓWKÓW\n")
+        f.write("=" * 50 + "\n\n")
+        
+        for h in headers:
+            indent = "  " * (h["level"] - 1)
+            bullet = "-" * h["level"]
+            f.write(f"{indent}{bullet} {h['text']}\n")
+    
+    print(f"Zapisano strukturę nagłówków do: {output_path}")
+
+
 def prompt_choice():
     print("\nCo chcesz zrobić?")
-    print("  1) Napraw i nadpisz plik (zrobię kopię .bak)")
+    print("  1) Napraw poziomy nagłówków i nadpisz plik (zrobię kopię .bak)")
     print("     - Naprawia hierarchię nagłówków (zmniejsza skoki >1 poziomu)")
     print("     - Usuwa niechciane końcowe backslashe '\\' na końcach linii")
     print("     - Wykrywa nieparzystą liczbę bloków kodu ``` (tylko ostrzega)")
-    print("  2) Napraw i zapisz do nowego pliku")
-    print("     - Jak powyżej, bez kopii pliku.")
-    print("  3) Pokaż podgląd zmian (pierwsze 20 linii)")
+    print("  2) Napraw poziomy nagłówków i zapisz do nowego pliku")
+    print("     - Jak powyżej, bez nadpisywania oryginału")
+    print("  3) Usuń puste linie po ':' przed blokami kodu")
+    print("     - Usuwa nadmiarowe puste linie między linią kończącą się na ':'")
+    print("       a blokiem kodu ```")
+    print("  4) Zarządzaj separatorami *** i odstępami wokół nagłówków")
+    print("     - Dodaje brakujące separatory '***' między nagłówkami tego")
+    print("       samego lub płytszego poziomu")
+    print("     - Usuwa separatory niedozwolone (np. przed nagłówkiem głębszym)")
+    print("     - Poprawia odstępy wokół już istniejących separatorów")
+    print("     - Dba o co najmniej jedną pustą linię przed każdym nagłówkiem")
+    print("     - Nie rusza bloków kodu ani „separatorów rozwiniętych” (dwa ***")
+    print("       z treścią pomiędzy nimi, bez nagłówka w środku)")
+    print("  5) Wyeksportuj listę nagłówków do pliku .txt")
+    print("     - Zapisuje drzewiastą strukturę nagłówków do pliku tekstowego")
+    print("  6) Pokaż podgląd zmian (pierwsze 20 linii)")
     print("     - Pokazuje różnice między oryginalnym a naprawionym plikiem")
-    print("  4) Pokaż strukturę nagłówków")
+    print("  7) Pokaż strukturę nagłówków")
     print("     - Wyświetla drzewo nagłówków z poziomami")
-    print("  5) Anuluj")
+    print("  8) Anuluj")
 
     mapping = {
         "1": "overwrite",
         "2": "newfile",
-        "3": "preview",
-        "4": "headers",
-        "5": "abort",
+        "3": "clean_colon_codeblocks",
+        "4": "add_header_separators",
+        "5": "export_headers",
+        "6": "preview",
+        "7": "headers",
+        "8": "abort",
     }
 
     return mapping.get(input("Wybór: ").strip())
+
 
 
 def show_preview(old, new, max_lines=20):
@@ -206,49 +476,89 @@ def main():
         input("Naciśnij klawisz aby zakończyć...")
         return
 
-    lines = p.read_text(encoding="utf-8").splitlines(keepends=True)
+    original_lines = p.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines = original_lines[:]  # kopia do modyfikacji
 
     header_issues, trailing, codeblock_issue = analyze(lines)
     headers = extract_headers(lines)
 
     print_report(header_issues, trailing, codeblock_issue)
 
-    fixed_lines = apply_fixes(lines)
-
     while True:
         action = prompt_choice()
-
-        if action == "preview":
-            show_preview(lines, fixed_lines)
-            continue
 
         if action == "headers":
             print_headers_tree(headers)
             continue
 
+        if action == "export_headers":
+            txt_path = p.with_suffix(".headers.txt")
+            export_headers_to_txt(headers, txt_path)
+            continue
+
+        if action == "preview":
+            fixed = apply_fixes(lines) if action in ["overwrite", "newfile"] else lines
+            show_preview(original_lines, fixed)
+            continue
+
+        # === Akcje modyfikujące ===
+        fixed_lines = None
+        action_name = ""
+
+        if action == "clean_colon_codeblocks":
+            fixed_lines = clean_colon_codeblocks(lines)
+            action_name = "Czyszczenie pustych linii"
+
+        elif action == "add_header_separators":
+            fixed_lines = add_header_separators(lines)
+            action_name = "Dodawanie separatorów ***"
+
+        elif action in ["overwrite", "newfile"]:
+            fixed_lines = apply_fixes(lines)
+            action_name = "Naprawa nagłówków"
+
+        if fixed_lines is not None:
+            print(f"\n→ {action_name} zakończone.")
+
+            # Zawsze pytamy o zapis przy każdej modyfikacji
+            while True:
+                print("\nCo zrobić z tymi zmianami?")
+                print("  1) Nadpisz oryginalny plik (utworzę kopię .bak)")
+                print("  2) Zapisz do nowego pliku (_fixed)")
+                print("  3) Anuluj i wróć do menu")
+
+                save_choice = input("Wybór: ").strip()
+
+                if save_choice == "1":
+                    backup = p.with_suffix(p.suffix + ".bak")
+                    shutil.copy2(p, backup)
+                    print(f"Utworzono kopię zapasową: {backup}")
+
+                    p.write_text("".join(fixed_lines), encoding="utf-8")
+                    print(f"✓ Zapisano zmiany w pliku: {p}")
+                    lines = fixed_lines[:]   # aktualizujemy stan w pamięci
+                    break
+
+                elif save_choice == "2":
+                    out = p.with_name(p.stem + "_fixed" + p.suffix)
+                    out.write_text("".join(fixed_lines), encoding="utf-8")
+                    print(f"✓ Zapisano do nowego pliku: {out}")
+                    break
+
+                elif save_choice == "3":
+                    print("Zmiany anulowane.")
+                    break
+
+            if action in ["clean_colon_codeblocks", "add_header_separators"]:
+                continue   # wracamy do menu
+
+            break  # po naprawie nagłówków wychodzimy
+
         if action == "abort":
             print("Anulowano.")
-            input("Naciśnij klawisz aby zakończyć...")
-            return
-
-        backup = p.with_suffix(p.suffix + ".bak")
-        shutil.copy2(p, backup)
-        print(f"Utworzono kopię zapasową: {backup}")
-
-        if action == "overwrite":
-            p.write_text("".join(fixed_lines), encoding="utf-8")
-            print(f"Zapisano zmiany w pliku: {p}")
             break
 
-        if action == "newfile":
-            out = p.with_name(p.stem + "_fixed" + p.suffix)
-            out.write_text("".join(fixed_lines), encoding="utf-8")
-            print(f"Zapisano do nowego pliku: {out}")
-            break
-
-        print("Nieprawidłowy wybór.")
-
-    input("Naciśnij klawisz aby zakończyć...")
+    input("\nNaciśnij klawisz aby zakończyć...")
 
 
 if __name__ == "__main__":
