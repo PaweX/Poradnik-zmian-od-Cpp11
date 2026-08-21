@@ -1,4 +1,4 @@
-# Poradnik zmian po C++03
+# Poradnik zmian następujacych po C++03
 
 Niniejszy poradnik ma na celu przedstawienie i wyjaśnienie wszystkich istotnych zmian,
 jakie zaszły w języku C++ od czasów standardu C++03. Obecnie obejmuje on zmiany
@@ -74,7 +74,7 @@ To oznaczało:
 
 ***
 
-##### C++11: referencja do r-wartości (`T&&`) i semantyka przenoszenia (move semantics)
+##### Referencja do r-wartości (`T&&`) i semantyka przenoszenia (move semantics)
 
 C++11 wprowadza nowy typ referencji: **rvalue reference**, zapisywany jako `T&&`.
 
@@ -110,7 +110,6 @@ std::vector<int> makeVec()
     return {1, 2, 3};
 }
 ```
-
 to:
 
 * obiekt tymczasowy jest **rvalue**,
@@ -255,7 +254,7 @@ Przenoszenie umożliwia:
 
 **Najkrótsza odpowiedź**:
 
-> **Przenoszenie pozwala przekazać zasoby z jednego obiektu do drugiego bez kopiowania.
+> **Przenoszenie** pozwala przekazać zasoby z jednego obiektu do drugiego bez kopiowania.
 > Jest używane wszędzie tam, gdzie kopiowanie byłoby zbyt wolne lub niemożliwe.
 
 ***
@@ -263,7 +262,7 @@ _Zobacz też:_
 * **`std::move` - czy mogę przenieść obiekt lokalny do globalnego?**
 ***
 
-##### Perfect forwarding
+##### Perfect forwarding (perfekcyjne przekazywanie)
 
 Połączenie **referencji do r‑wartości** z pewnymi zmianami w semantyce referencji w kontekście szablonów umożliwiło tzw. **perfect forwarding** (**doskonałe przekierowywanie**).
 
@@ -271,7 +270,7 @@ Połączenie **referencji do r‑wartości** z pewnymi zmianami w semantyce refe
 
 * Mechanizm ten wykorzystuje:
 
-  * **forwarding references** (dawniej nazywane _universal references_): parametry szablonowe zadeklarowane jako `T&&` w kontekście dedukcji typu,
+  * **forwarding references** (referencje przekazujące, dawniej nazywane uniwersalne - _universal references_): parametry szablonowe zadeklarowane jako `T&&` w kontekście dedukcji typu,
   * `std::forward<T>(arg)` do zachowania oryginalnej kategorii wartości przy przekazywaniu.
 
 **Dlaczego to jest przydatne?**
@@ -6557,3 +6556,5 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
 ### C++23
 
 Standard C++23 **nie wprowadza nowych deprecacji ani usunięć** dotyczących elementów opisanych powyżej.
+
+[^1]: 
