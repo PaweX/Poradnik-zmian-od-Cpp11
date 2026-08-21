@@ -1,4 +1,4 @@
-<!-- # Poradnik zmian po C++03
+# Poradnik zmian po C++03
 
 Niniejszy poradnik ma na celu przedstawienie i wyjaśnienie wszystkich istotnych zmian,
 jakie zaszły w języku C++ od czasów standardu C++03. Obecnie obejmuje on zmiany
@@ -6557,4 +6557,3 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
 ### C++23
 
 Standard C++23 **nie wprowadza nowych deprecacji ani usunięć** dotyczących elementów opisanych powyżej.
- -->
