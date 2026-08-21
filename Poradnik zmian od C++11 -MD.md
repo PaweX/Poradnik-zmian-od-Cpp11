@@ -18,6 +18,8 @@ wprowadzone w C++11, C++14, C++17, C++20 oraz C++23.
 
 Duża uwaga poświęcona została początkującym, ponieważ większość programistów zawsze będzie na poziomie „średnio-zaawansowanym / początkującym”, a wielu nigdy nie poszerza swojej wiedzy poza wąski wycinek języka, w którym się specjalizują.
 
+***
+
 ## Rozszerzenia rdzenia języka C++ (core language)
 
 Jednym z głównych zadań komitetu standaryzacyjnego C++ jest rozwój **rdzenia języka**. W standardach od C++11 wzwyż znacząco ulepszono m.in.:
@@ -27,13 +29,9 @@ Jednym z głównych zadań komitetu standaryzacyjnego C++ jest rozwój **rdzenia
 * **jednolitą inicjalizację**,
 * oraz **wydajność wykonania**.
 
-***
-
 ### Poprawki wydajności w czasie wykonywania (runtime)
 
 Poniższe funkcje językowe powstały głównie po to, aby poprawić **wydajność czasu wykonania** — zarówno pod względem zużycia pamięci, jak i szybkości obliczeń.
-
-***
 
 #### Referencje do r‑wartości (rvalue references) i konstruktory przenoszące (move constructors)
 
@@ -84,6 +82,8 @@ Pozwala on:
 
 * rozpoznać obiekty tymczasowe,
 * **przenosić** zasoby zamiast je kopiować.
+
+***
 
 ##### Jak działa przenoszenie?
 
@@ -178,6 +178,8 @@ To jest różnica między:
 * kopiowaniem 1 GB danych,
 * a przestawieniem jednego wskaźnika.
 
+***
+
 ###### Skąd dokąd się przenosi?
 
 Z **obiektu źródłowego** → do **obiektu docelowego**, zwykle:
@@ -208,6 +210,8 @@ Co się dzieje?
 
 To jest powód, dla którego przenoszenie istnieje.
 
+***
+
 ###### Dlaczego nie kopiować?
 
 Wyobraź sobie kontener:
@@ -229,6 +233,8 @@ Dzięki przenoszeniu:
 * `vector` tylko **przesuwa wskaźniki**,
 * operacje są szybkie,
 * nie ma zbędnych kopii.
+
+***
 
 ###### Przenoszenie jest fundamentem nowoczesnego C++
 
@@ -285,8 +291,6 @@ Umożliwia tworzenie funkcji fabrycznych i konstruktorów pomocniczych, które w
 #### `constexpr` – uogólnione wyrażenia stałe
 
 C++ od zawsze rozróżniał **wyrażenia stałe** — wyrażenia, których wartość jest znana i może być obliczona w czasie kompilacji i w czasie wykonywania, np. `3 + 4`. Wyrażenia stałe są okazją do optymalizacji: kompilatory często **wykonują je podczas kompilacji** i **wstawiają wynik na stałe** do wygenerowanego kodu. Ponadto specyfikacja C++ wymaga użycia wyrażeń stałych w niektórych kontekstach (np. przy określaniu rozmiaru tablicy statycznej czy przy wartościach enumeratorów).
-
-***
 
 ##### Problem w C++03
 
@@ -415,7 +419,7 @@ licznik_globalny = 5; // dozwolone — constinit nie oznacza const
 - Wywołanie `consteval` poza kontekstem kompilacyjnym generuje błąd kompilacji.  
 - Wywołanie `constexpr` z argumentami, które nie dają wyrażenia stałego, nie jest błędem — po prostu wynik nie będzie wyrażeniem stałym i obliczenie nastąpi w runtime.  
 - `constinit` spowoduje błąd, jeśli inicjalizacja nie jest statyczna (tj. nie może być wykonana w fazie inicjalizacji statycznej).
-  
+
 ***
 
 ##### Zmienne constexpr
@@ -546,8 +550,6 @@ C++11 rozwiązał ten problem, dzieląc pojęcie POD na dwa osobne pojęcia:
 * **standard-layout** (typ o standardowym układzie pamięci).
 
 Dzięki temu można mieć typ zgodny z C, ale niekoniecznie trywialny — albo odwrotnie.
-
-***
 
 ##### Typ _trivial_ (trywialny)
 
@@ -865,8 +867,6 @@ IdString pobierzString()
 }
 ```
 
-***
-
 ##### Uwaga o konstruktorach list inicjalizacyjnych
 
 Jeśli klasa ma konstruktor:
@@ -913,8 +913,6 @@ C++11 łagodzi ten problem na dwa sposoby:
 
 * poprzez słowo kluczowe **`auto`**,
 * poprzez słowo kluczowe **`decltype`**.
-
-***
 
 ##### `auto`
 
@@ -1011,7 +1009,7 @@ Komentarz dla początkującego:
 * `decltype((x))` → **zawsze referencja**, bo `(x)` jest lvalue (to jedna z najczęstszych pułapek!)
 
 ***
-Zobacz też:
+_Zobacz też:_
 * **Czy `decltype` zastąpiło `typeof`?**
 ***
 
@@ -1205,8 +1203,6 @@ Przykład:
 
 To bardzo przydatne w programowaniu funkcyjnym, algorytmach STL i callbackach.
 
-***
-
 ##### (C++14): lambdy generyczne (generic lambdas)
 
 W C++11 parametry funkcji lambda musiały mieć **konkretne typy** — nie można było używać `auto`.
@@ -1312,6 +1308,8 @@ auto lambda = z.przygotuj();
 Przed C++17 jedynym sposobem było ręczne kopiowanie potrzebnych pól przez
 wyrażenia przechwytywania (`[wartosc = this->wartosc]`).
 
+***
+
 ###### Uzupełnienie (C++20): `[=, this]` — jawne przechwytywanie `this` przy `[=]`
 
 W C++17 i wcześniej zapis `[=]` niejawnie przechwytywał `this` przez wskaźnik,
@@ -1365,8 +1363,6 @@ decltype(lhs + rhs) dodaj(const L& lhs, const R& rhs)
 
 Dlaczego?
 Bo `lhs` i `rhs` **nie istnieją jeszcze** w momencie, gdy parser czyta nagłówek funkcji.
-
-***
 
 ##### Trailing return type (typ zwracany po parametrze)
 
@@ -1460,8 +1456,6 @@ Dodatkowe ograniczenia C++03:
 * **pól niestatycznych nie można było inicjalizować przy deklaracji**, tylko w konstruktorze.
 
 C++11 rozwiązuje wszystkie te problemy.
-
-***
 
 ##### Delegowanie konstruktorów (konstruktor wywołujący inny konstruktor)
 
@@ -1612,8 +1606,6 @@ struct KlasaPochodna : public KlasaBazowa
 
 Ponieważ sygnatura jest inna, powstaje **nowa** funkcja wirtualna.
 To częsty błąd, szczególnie gdy ktoś modyfikuje klasę bazową i nie zauważa zmiany sygnatury.
-
-***
 
 ##### `override` — wymuszenie poprawnego nadpisania
 
@@ -1795,6 +1787,8 @@ bool b = nullptr;   // OK. b == false
 int i = nullptr;    // błąd — nullptr nie konwertuje się do int
 ```
 
+***
+
 ##### `nullptr` a przeciążanie funkcji
 
 ```cpp
@@ -1820,6 +1814,7 @@ Pełny komentarz (bez uproszczeń):
       typedef void* nullptr_t;    // ANSI C, gdzie NULL definiowano jako ((void*)0)
 */
 ```
+
 ***
 
 #### Silnie typowane wyliczenia (strongly typed enumerations)
@@ -1863,8 +1858,6 @@ enum class Kierunek : char
     PRAWO
 };
 ```
-
-***
 
 ##### Stare wyliczenia z nowym zakresem
 
@@ -2330,8 +2323,6 @@ sprawdzane w czasie kompilacji. Pozwalają one:
 * generować czytelne komunikaty błędów w miejscu wywołania,
 * przeciążać szablony na podstawie właściwości typów.
 
-***
-
 ##### Definiowanie konceptu
 
 ```cpp
@@ -2490,8 +2481,6 @@ dołączanych przez `#include`. System ten ma poważne wady:
 C++20 wprowadza **moduły** — nowy mechanizm organizacji kodu, który rozwiązuje
 te problemy.
 
-***
-
 ##### Tworzenie modułu
 
 ```cpp
@@ -2607,8 +2596,6 @@ i **wznowić je później** — bez blokowania wątku i bez tworzenia nowego wą
 Zwykła funkcja działa sekwencyjnie: wchodzi, wykonuje się, wychodzi.
 Korutyna może wyjść tymczasowo (zawiesić się), a potem wrócić do miejsca
 zawieszenia i kontynuować.
-
-***
 
 ##### Trzy nowe słowa kluczowe
 
@@ -3009,8 +2996,6 @@ if (inteligentnyWskaznik) { ... }
 
 To klasyczny problem znany jako **idiom bezpiecznego boola** (_safe bool idiom_).
 
-***
-
 ##### C++11: `explicit` dla operatorów konwersji
 
 C++11 pozwala oznaczać operatory konwersji jako `explicit`, np.:
@@ -3055,8 +3040,6 @@ W praktyce mechanizm ten okazał się nieudany:
 * kod obsługi był kosztowny nawet gdy wyjątki nie były rzucane.
 
 C++11 zastępuje go słowem kluczowym `noexcept`.
-
-***
 
 ##### `noexcept` jako specyfikator
 
@@ -3155,8 +3138,6 @@ class JakisTyp;
 template <typename Drugi>
 typedef JakisTyp<InnyTyp, Drugi, 5> NazwaTypedefu; // Niepoprawne w C++03
 ```
-
-***
 
 ##### C++11: aliasy szablonów przez `using`
 
@@ -3280,8 +3261,6 @@ Zmiany te **nie psują istniejącego kodu**, ponieważ jedynie **luzują wcześn
 
 Te funkcje pozwalają językowi robić rzeczy, które wcześniej były niemożliwe, bardzo rozwlekłe lub wymagały nieprzenośnych bibliotek.
 
-***
-
 #### Szablony wariadyczne (Variadic templates)
 
 W C++03 jedynym sposobem na napisanie funkcji przyjmującej dowolną liczbę argumentów były **funkcje wariadyczne w stylu C** (`...` + `va_list`, `va_arg`, `va_start`). Były one bardzo niebezpieczne – brak sprawdzania typów, łatwe błędy, problemy z alignmentem i niezdefiniowane zachowanie przy złym użyciu.
@@ -3299,6 +3278,8 @@ void mojaFunkcja(Args... args)     // args...  – paczka argumentów
 ```
 
 `typename... Args` oznacza „dowolna liczba dowolnych typów”.
+
+***
 
 ##### Prosty przykład – bezpieczna funkcja wypisująca dowolną liczbę argumentów
 
@@ -3328,6 +3309,8 @@ int main()
 Dzięki temu mechanizmowi kompilator w czasie kompilacji generuje kod dla każdej kombinacji typów i liczby argumentów. Wszystko jest sprawdzane typowo, w czasie kompilacji, a programista nie musi ręcznie wyciągać argumentów za pomocą niebezpiecznych makr (`va_arg`).
 
 To jedna z najważniejszych zmian w C++11, która ogromnie ułatwiła pisanie elastycznych i bezpiecznych bibliotek.
+
+***
 
 ##### Dlaczego to jest duża zmiana?
 
@@ -3369,6 +3352,7 @@ void print(const T& t, const Ts&... ts)
     print(ts...); // rekurencja na reszcie
 }
 ```
+
 ***
 
 ##### Uzupełnienie (C++17): wyrażenia składane (fold expressions)
@@ -3472,8 +3456,6 @@ Zasady:
 * można wstawiać tylko **poprawne** punkty kodowe,
 * zakres U+D800–U+DFFF jest **zabroniony**, ponieważ jest zarezerwowany dla par surogatów UTF‑16.
 
-***
-
 ##### Uzupełnienie (C++17): literały znakowe UTF-8
 
 C++11 wprowadził literały napisowe UTF-8 (`u8"..."`), ale nie miał odpowiednika
@@ -3488,7 +3470,9 @@ Próba użycia znaku spoza tego zakresu jest błędem kompilacji.
 
 Głównym celem jest spójność z literałami napisowymi: skoro istnieje `u8"tekst"`,
 powinno istnieć też `u8'x'`.
+
 ***
+
 ##### Uzupełnienie (C++17): szestnastkowe literały zmiennoprzecinkowe
 
 C++17 dodaje możliwość zapisu liczb zmiennoprzecinkowych w systemie szesnastkowym,
@@ -3560,8 +3544,6 @@ Dodanie sufiksu `f`, jak w `12.5f`, tworzy wartość typu `float` o tej samej wa
 Sufiksy literałów w C++03 są **sztywno określone przez standard** — programista **nie może** tworzyć własnych modyfikatorów literałów.
 
 C++11 to zmienia: pozwala użytkownikowi definiować **własne sufiksy literałów**, które tworzą obiekty na podstawie znaków występujących w literałach.
-
-***
 
 ##### Surowe i przetworzone literały (raw vs cooked literals)
 
@@ -3746,8 +3728,6 @@ Składa się to z dwóch części:
 
 Model pamięci definiuje, kiedy wiele wątków może uzyskiwać dostęp do tego samego miejsca w pamięci oraz określa, kiedy zmiany dokonane przez jeden wątek stają się widoczne dla innych wątków.
 
-***
-
 ##### Pamięć lokalna dla wątku (thread-local storage)
 
 W środowisku wielowątkowym powszechne jest, że każdy wątek ma pewne unikalne zmienne.
@@ -3833,6 +3813,7 @@ class NieKopiowalny
     NieKopiowalny& operator=(const NieKopiowalny&) = delete;
 };
 ```
+
 ***
 
 #### Typ `long long int`
@@ -3849,8 +3830,6 @@ Gwarantuje się, że:
 * ma **nie mniej niż 64 bity**.
 
 Typ ten został pierwotnie wprowadzony w standardzie **C99**, a większość kompilatorów C++ już wcześniej wspierała go jako rozszerzenie.
-
-***
 
 ##### Uzupełnienie (C++20): gwarantowana reprezentacja two's complement
 
@@ -3980,6 +3959,8 @@ static_assert(sizeof(int) == 4);
 
 Jeśli warunek jest fałszywy, kompilator generuje domyślny komunikat.
 
+***
+
 ##### Uzupełnienie (C++20): `static_assert` w modułach i konceptach
 
 C++20 pozwala używać `static_assert`:
@@ -4048,6 +4029,8 @@ std::hardware_constructive_interference_size
 ```
 
 Pomagają one unikać _false sharing_ w programach wielowątkowych.
+
+***
 
 ##### Uzupełnienie (C++20): alignas w kontekstach constexpr
 
@@ -4166,6 +4149,8 @@ enum class Kolor
 
 Przed C++17 atrybuty przy przestrzeniach nazw i elementach wyliczenia były niedozwolone lub zależne od kompilatora.
 
+***
+
 ##### **Uzupełnienie (C++17): atrybuty `[[fallthrough]]`, `[[nodiscard]]`, `[[maybe_unused]]`**
 
 C++17 dodaje trzy ważne atrybuty:
@@ -4178,6 +4163,9 @@ Przykład:
 ```cpp
 [[nodiscard]] int policz();
 ```
+
+***
+
 ##### **Uzupełnienie (C++20): atrybut `[[likely]]` i `[[unlikely]]`**
 
 C++20 dodaje atrybuty podpowiadające kompilatorowi przewidywanie gałęzi:
@@ -4191,6 +4179,9 @@ else [[unlikely]]
     ...
 }
 ```
+
+***
+
 ##### Uzupełnienie (C++23): atrybut `[[assume]]`
 
 C++23 wprowadza:
@@ -4199,6 +4190,7 @@ C++23 wprowadza:
 ```
 
 Informuje kompilator, że dany warunek **zawsze jest prawdziwy**, co może umożliwić dodatkowe optymalizacje.
+
 ***
 
 ## Zmiany w standardowej bibliotece C++
@@ -4209,8 +4201,6 @@ Wiele z nich dałoby się zaimplementować w starym standardzie, ale część op
 Duża część nowych bibliotek została wcześniej zdefiniowana w dokumencie znanym jako **TR1 (Library Technical Report)**.
 Różne implementacje TR1 były dostępne w przestrzeni nazw `std::tr1`.
 W C++11 funkcje te przeniesiono do przestrzeni nazw `std`, a przy okazji niektóre z nich zostały zaktualizowane tak, by wykorzystywać nowe możliwości języka C++11 lub rozszerzone o funkcje, które były możliwe do zaimplementowania już w C++03, ale nie znalazły się w pierwotnym TR1.
-
-***
 
 ### Ulepszenia istniejących komponentów biblioteki
 
@@ -4231,8 +4221,6 @@ Komponenty biblioteki zostały tam, gdzie to miało sens, zaktualizowane o nast�
 Ponadto od czasu poprzedniego standardu powstało dużo kodu korzystającego ze standardowej biblioteki, co ujawniło obszary wymagające poprawy.
 Jednym z takich obszarów są **alokatory**.
 W C++11 wprowadzono dodatkowy, **zakresowy model alokatorów**, uzupełniający wcześniejszy model.
-
-***
 
 #### (C++14): heterogeniczne wyszukiwanie w kontenerach asocjacyjnych
 
@@ -4261,8 +4249,6 @@ Standardowe `std::less<>` i `std::greater<>` zostały w C++14 odpowiednio rozsze
 #### Uzupełnienie (C++14): drobne rozszerzenia biblioteki
 
 C++14 wprowadza szereg mniejszych, ale praktycznych rozszerzeń w standardowej bibliotece:
-
-***
 
 ##### `std::make_unique`
 
@@ -4301,6 +4287,8 @@ Dodano stałe i odwrotne iteratory w formie funkcji globalnych:
 ```cpp
 for (auto it = std::cbegin(v); it != std::cend(v); ++it) { ... }
 ```
+
+***
 
 ##### Uzupełnienie (C++17): `std::size`, `std::empty`, `std::data`
 
@@ -4430,6 +4418,8 @@ auto [it, wstawiono] = m.insert_or_assign("klucz", nowaWartosc);
 Przed C++17 osiągano ten efekt przez `operator[]`, ale `operator[]`
 wymaga, żeby typ wartości miał konstruktor domyślny — `insert_or_assign` nie ma tego wymagania.
 
+***
+
 ##### Uzupełnienie (C++20): `std::erase` i `std::erase_if`
 
 Usuwanie elementów z kontenerów sekwencyjnych wymagało przed C++20
@@ -4454,6 +4444,8 @@ std::erase_if(v, [](int x) { return x % 2 == 0; }); // usuwa parzyste
 `std::erase` i `std::erase_if` działają dla większości standardowych kontenerów
 sekwencyjnych: `std::vector`, `std::list`, `std::deque`, `std::string`.
 Dla kontenerów asocjacyjnych (`std::map`, `std::set`) działa tylko `std::erase_if`.
+
+***
 
 ##### Uzupełnienie (C++20): kontenery i algorytmy constexpr
 
@@ -4502,6 +4494,8 @@ for (int x : v | std::views::filter([](int n){ return n % 2 == 0; })
 C++23 rozszerza `std::ranges` o nowe widoki i algorytmy, m.in.:
 `std::views::zip`, `std::views::enumerate`, `std::views::chunk`,
 `std::views::slide`, `std::views::join_with`, `std::ranges::fold_left`.
+
+***
 
 ##### `std::format` (C++20)
 
@@ -5247,8 +5241,6 @@ Kod wielowątkowy pisany w C++03 był nieprzenośny i trudny w utrzymaniu.
 C++11 zmienia to fundamentalnie — wprowadza model pamięci dla wielu wątków
 oraz kompletną bibliotekę do programowania wielowątkowego, przenośną między platformami.
 
-***
-
 #### Podstawowe pojęcia
 
 ##### Czym jest wątek?
@@ -5307,6 +5299,8 @@ Inne typowe zastosowania wielowątkowości:
 * **przetwarzanie danych** — duży zbiór danych dzielony między wątki
   i przetwarzany równolegle na wielu rdzeniach procesora.
 
+***
+
 ##### Wyścig danych (data race)
 
 Gdy wiele wątków jednocześnie korzysta z tych samych danych, może dojść do **wyścigu danych**
@@ -5328,6 +5322,8 @@ Jeśli oba wątki odczytają `licznik` w tym samym momencie (np. wartość `5`),
 oba dodadzą `1` i oba zapiszą `6` — zamiast oczekiwanego `7`.
 To klasyczny przykład wyścigu danych.
 
+***
+
 ##### Mutex i sekcja krytyczna
 
 Rozwiązaniem jest **mutex** (ang. _mutual exclusion_ — wzajemne wykluczanie).
@@ -5342,6 +5338,8 @@ Zasada działania:
 * jeśli mutex jest już zablokowany przez inny wątek — wątek **czeka**,
 * po zakończeniu sekcji krytycznej wątek **zwalnia** (_unlock_) mutex,
 * dopiero wtedy inny czekający wątek może wejść do sekcji krytycznej.
+
+***
 
 ##### Zakleszczenie (deadlock)
 
@@ -5648,6 +5646,8 @@ void zapisz(const std::string& nowaWartosc)
 > obsługuje timeouty (`try_lock_for`, `try_lock_until`). Jeśli timeouty nie są potrzebne,
 > `std::shared_mutex` (C++17) jest lżejszym i preferowanym wyborem.
 
+***
+
 ##### `std::scoped_lock` — jednoczesne blokowanie wielu mutexów bez zakleszczenia
 
 Klasyczny problem z wieloma mutexami: jeśli dwa wątki próbują zablokować te same mutexy
@@ -5701,6 +5701,8 @@ int main()
 }
 ```
 
+***
+
 ##### Stop tokens — ustandaryzowane anulowanie wątków
 
 Przed C++20 nie było standardowego sposobu na poproszenie wątku o zakończenie pracy.
@@ -5736,6 +5738,8 @@ int main()
     // destruktor jthread czeka na zakończenie wątku
 }
 ```
+
+***
 
 ##### Nowe prymitywy synchronizacji
 
@@ -5843,8 +5847,6 @@ Dostępne są operatory relacyjne (dla krotek o tej samej liczbie elementów) or
 
 * `std::tuple_size<T>::value` — zwraca liczbę elementów w krotce `T`,
 * `std::tuple_element<I, T>::type` — zwraca typ elementu o indeksie `I` w krotce `T`.
-
-***
 
 #### (C++14): pobieranie elementu krotki po typie (`std::get<T>`)
 
@@ -6306,8 +6308,6 @@ Dzięki cechom typów można też wykonywać **transformacje typów** (np. usuwa
 
 **Uwaga praktyczna:** metaprogramowanie daje eleganckie i zwarte rozwiązania, ale debugowanie błędów kompilacji może być trudne — komunikaty kompilatora bywają długie i nieintuicyjne.
 
-***
-
 #### Uzupełnienie (C++14/17/20/23)
 
 **C++14**
@@ -6447,16 +6447,22 @@ Standard **C++11** wprowadził zestaw zmian mających na celu poprawę zgodnośc
 * łączenie sąsiednich literałów łańcuchowych (wąskich i szerokich),
 * funkcja `_Pragma()` — odpowiednik `#pragma`.
 
+***
+
 #### Typy i makra
 
 * `long long` — typ całkowity gwarantowany co najmniej na 64 bity,
 * `__func__` — makro zwracające nazwę bieżącej funkcji.
+
+***
 
 #### Nagłówki
 
 * `cstdbool` (odpowiednik `stdbool.h`),
 * `cstdint` (odpowiednik `stdint.h`),
 * `cinttypes` (odpowiednik `inttypes.h`).
+
+***
 
 ### C++17
 
@@ -6472,6 +6478,8 @@ Standard **C++11** wprowadził zestaw zmian mających na celu poprawę zgodnośc
   #endif
 ```
   Przydatne przy pisaniu kodu przenośnego między kompilatorami i standardami.
+
+***
 
 ### C++14 / C++20 / C++23
 
@@ -6505,10 +6513,14 @@ Poniżej znajduje się uporządkowana lista zmian, z zaznaczeniem ewolucji w kol
 
 * Słowo kluczowe `register` zostało oznaczone jako przestarzałe.
 
+***
+
 ### C++14
 
 Standard C++14 **nie wprowadził żadnych zmian** dotyczących elementów przestarzałych lub usuniętych w tej sekcji.
 Wszystkie pozycje z C++11 pozostały w tym samym stanie.
+
+***
 
 ### C++17 (usunięcia elementów przestarzałych)
 
@@ -6531,12 +6543,16 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
   Były dziedzictwem standardu ISO 646 i praktycznie nieużywane we współczesnym kodzie.
   Kompilatory już od dawna obsługiwały je opcjonalnie.
 
+***
+
 ### C++20
 
 * Słowo kluczowe `export` zostało **przywrócone**, ale wyłącznie jako element **modułów**.
   Nie ma żadnego związku z eksportowanymi szablonami z C++98/03.
 
 * Brak dodatkowych usunięć lub deprecacji w zakresie elementów wymienionych w tej sekcji.
+
+***
 
 ### C++23
 
