@@ -6556,5 +6556,3 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
 ### C++23
 
 Standard C++23 **nie wprowadza nowych deprecacji ani usunięć** dotyczących elementów opisanych powyżej.
-
-[^1]: 
