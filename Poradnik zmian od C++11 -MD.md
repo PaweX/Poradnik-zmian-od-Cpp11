@@ -1989,6 +1989,286 @@ vector<JakisTyp<(1>2)>> x1;
 
 ***
 
+#### Jawne operatory konwersji (explicit conversion operators)
+
+W C++98 słowo kluczowe `explicit` można było stosować tylko do konstruktorów, aby zapobiec **niejawnym konwersjom typu** wykonywanym przez konstruktory jednoargumentowe.
+Nie działało to jednak dla **operatorów konwersji**.
+
+Przykład problemu:
+
+* inteligentny wskaźnik może mieć `operator bool()`,
+* dzięki temu można go używać w instrukcjach warunkowych:
+```cpp
+if (inteligentnyWskaznik) { ... }
+```
+
+* ale `bool` w C++ jest **typem arytmetycznym**,
+* więc może konwertować się niejawnie do `int`, `double`, itd.,
+* co pozwala na niezamierzone operacje matematyczne.
+
+To klasyczny problem znany jako **idiom bezpiecznego boola** (_safe bool idiom_).
+
+##### C++11: `explicit` dla operatorów konwersji
+
+C++11 pozwala oznaczać operatory konwersji jako `explicit`, np.:
+```cpp
+explicit operator bool() const;
+```
+
+Efekt:
+
+* operator **nie może być użyty w konwersjach niejawnych**,
+
+* ale **może być użyty w kontekstach wymagających wartości logicznej**, takich jak:
+
+  * warunek `if`,
+  * warunek pętli `while` / `for`,
+  * operatory logiczne (`&&`, `||`, `!`).
+
+Czyli:
+
+* `if (obj)` → **dozwolone**,
+* `int x = obj;` → **błąd**,
+* `double y = obj;` → **błąd**.
+
+To elegancko rozwiązuje problem **safe bool**.
+
+***
+
+#### `noexcept` — specyfikacja i operator braku wyjątków
+
+W C++03 istniał mechanizm **dynamicznych specyfikacji wyjątków** (`throw(...)`),
+pozwalający deklarować, jakie wyjątki funkcja może rzucić:
+```cpp
+void funkcja() throw(std::runtime_error); // może rzucić tylko runtime_error
+void inna()    throw();                   // nie rzuca żadnych wyjątków
+```
+
+W praktyce mechanizm ten okazał się nieudany:
+
+* sprawdzanie odbywało się **w czasie wykonywania**, nie kompilacji,
+* naruszenie specyfikacji powodowało wywołanie `std::unexpected()`, a nie błąd kompilacji,
+* kompilatory nie mogły na tej podstawie robić optymalizacji,
+* kod obsługi był kosztowny nawet gdy wyjątki nie były rzucane.
+
+C++11 zastępuje go słowem kluczowym `noexcept`.
+
+##### `noexcept` jako specyfikator
+
+Oznacza, że funkcja **nie rzuca wyjątków**:
+```cpp
+void funkcja() noexcept;          // nie rzuca wyjątków
+void inna()    noexcept(true);    // równoważne — nie rzuca
+void jeszcze() noexcept(false);   // może rzucać (domyślne zachowanie)
+```
+
+Jeśli funkcja oznaczona `noexcept` rzuci wyjątek, program wywołuje `std::terminate()`
+natychmiast — bez rozwijania stosu. To gwarancja silniejsza niż w C++03.
+
+Kompilator może wykorzystać `noexcept` do **optymalizacji** — np. `std::vector`
+użyje konstruktora przenoszącego zamiast kopiującego tylko wtedy, gdy przenoszenie
+jest `noexcept`. Bez tej gwarancji musi kopiować, żeby zachować silną gwarancję wyjątków
+przy realokacji.
+
+Dlatego konstruktory przenoszące i operatory przenoszące powinny być oznaczone `noexcept`
+wszędzie tam, gdzie to możliwe:
+```cpp
+class Bufor
+{
+    int* dane;
+    std::size_t rozmiar;
+
+public:
+    Bufor(Bufor&& inny) noexcept  // bez noexcept vector będzie kopiował zamiast przenosić
+        : dane(inny.dane), rozmiar(inny.rozmiar)
+    {
+        inny.dane = nullptr;
+        inny.rozmiar = 0;
+    }
+};
+```
+
+***
+
+##### `noexcept` jako operator
+
+`noexcept(wyrażenie)` użyte jako **operator** (nie specyfikator) zwraca `bool`
+w czasie kompilacji — `true` jeśli wyrażenie nie może rzucić wyjątku:
+```cpp
+int x = 5;
+constexpr bool a = noexcept(x + 1);      // true — dodawanie int nie rzuca
+constexpr bool b = noexcept(new int(1)); // false — new może rzucić bad_alloc
+```
+
+Pozwala to warunkowo oznaczać funkcje jako `noexcept` na podstawie właściwości
+używanych przez nie typów:
+```cpp
+template <typename T>
+void zamien(T& a, T& b) noexcept(noexcept(T(std::move(a))))
+{
+    T tmp = std::move(a);
+    a = std::move(b);
+    b = std::move(tmp);
+}
+```
+
+Funkcja `zamien` jest `noexcept` dokładnie wtedy, gdy przenoszenie `T` jest `noexcept`.
+
+***
+
+##### Uzupełnienie (C++17): `noexcept` jako część typu funkcji
+
+Od C++17 `noexcept` jest częścią **typu** funkcji, a nie tylko jej deklaracji.
+Wskaźnik do funkcji `noexcept` i wskaźnik do zwykłej funkcji to różne typy:
+```cpp
+void f() noexcept;
+void g();
+
+void (*pf)() noexcept = &f; // OK
+void (*pg)() noexcept = &g; // błąd — g() nie jest noexcept
+```
+
+Przed C++17 obie deklaracje miały ten sam typ wskaźnika, co uniemożliwiało
+kompilatorowi i narzędziom statycznej analizy dokładniejsze sprawdzanie gwarancji wyjątków.
+
+***
+
+#### Aliasowanie szablonów (template aliases)
+
+W C++03 można było tworzyć `typedef`, ale tylko jako alias **konkretnego typu**, np.:
+
+* alias typu zwykłego,
+* alias konkretnej specjalizacji szablonu.
+
+Nie można było tworzyć aliasów **samych szablonów**.
+
+Przykład niepoprawny w C++03:
+```cpp
+template <typename Pierwszy, typename Drugi, int Trzeci>
+class JakisTyp;
+
+template <typename Drugi>
+typedef JakisTyp<InnyTyp, Drugi, 5> NazwaTypedefu; // Niepoprawne w C++03
+```
+
+##### C++11: aliasy szablonów przez `using`
+
+C++11 wprowadza składnię:
+```cpp
+template <typename Pierwszy, typename Drugi, int Trzeci>
+class JakisTyp;
+
+template <typename Drugi>
+using NazwaTypu = JakisTyp<InnyTyp, Drugi, 5>;
+```
+
+To jest **pełnoprawny alias szablonu**.
+
+***
+
+##### `using` jako nowoczesny zamiennik `typedef`
+
+```cpp
+typedef void (*TypFunkcji)(double); // stary styl
+using TypFunkcji = void (*)(double); // nowy styl
+```
+
+Zalety `using`:
+
+* czytelniejszy,
+* działa z aliasami szablonów,
+* lepiej współpracuje z `template <...>`.
+
+***
+
+##### (C++14): zmienne szablonowe (variable templates)
+
+W poprzednich wersjach C++ szablonami mogły być jedynie funkcje, klasy oraz aliasy typów.
+C++14 rozszerza ten mechanizm, pozwalając tworzyć **szablonowe zmienne** — czyli zmienne, których typ i wartość zależą od parametru szablonu.
+
+Przykładowo, można zdefiniować stałą `PI` zależną od typu:
+```cpp
+template <typename T>
+constexpr T PI = T(3.141592653589793238462643383);
+```
+
+Dzięki temu:
+```cpp
+double d = PI<double>;       // 3.1415926535897931...
+float  f = PI<float>;        // 3.1415927f
+int    i = PI<int>;          // 3
+```
+
+Zmienne szablonowe podlegają **tym samym zasadom specjalizacji**, co funkcje i klasy szablonowe:
+```cpp
+template <>
+constexpr const char* PI<const char*> = "pi";
+```
+
+Mechanizm ten jest szczególnie przydatny do definiowania:
+
+* stałych zależnych od typu (np. `epsilon<T>`, `zero<T>`, `identity<T>`),
+* parametrów konfiguracyjnych w metaprogramowaniu,
+* wartości używanych w kontekstach `constexpr`.
+
+Zmienne szablonowe stanowią naturalne uzupełnienie aliasów szablonów z C++11 i są ważnym elementem nowoczesnego stylu programowania szablonowego.
+
+***
+
+#### Unia bez ograniczeń (unrestricted unions)
+
+W C++03 unie (`union`) miały poważne ograniczenia:
+
+* nie mogły zawierać obiektów z **nietrywialnym konstruktorem** lub **destruktorem**,
+* nie mogły zawierać typów z nietrywialnymi funkcjami specjalnymi.
+
+C++11 **znosi część tych ograniczeń**.
+
+Jeśli unia zawiera typ z nietrywialnymi funkcjami specjalnymi, to:
+
+* kompilator **nie wygeneruje automatycznie** odpowiednich funkcji specjalnych dla unii,
+* trzeba je zdefiniować ręcznie.
+
+Przykład unii dozwolonej w C++11:
+```cpp
+#include <new> // Potrzebne do użycia placement 'new'.
+
+struct Punkt
+{
+    int a;
+    int b;
+
+    Punkt() {}
+
+    Punkt(int x, int y)
+        : a(x), b(y) {} // ← "poprawiony błąd 'x(a), y(b)' z przykładu z wikipedii."
+};
+
+union MojaUnia
+{
+    int z;
+    double w;
+    Punkt p; // Niepoprawne w C++03; poprawne w C++11.
+
+    // Z powodu składowej Punkt, teraz potrzebna jest definicja konstruktora.
+    MojaUnia() {}
+
+    MojaUnia(const Punkt& punktParam)
+        : p(punktParam) {} // Konstruuje obiekt Punkt z użyciem listy inicjalizacyjnej.
+
+    MojaUnia& operator=(const Punkt& punktParam)
+    {
+        // Przypisuje obiekt Punkt z użyciem placement 'new'.
+        new (&p) Punkt(punktParam);
+        return *this;
+    }
+};
+```
+
+Zmiany te **nie psują istniejącego kodu**, ponieważ jedynie **luzują wcześniejsze ograniczenia**.
+
+***
+
 #### (C++17): Zagnieżdżone przestrzenie nazw
 
 W C++03 i C++11 zagnieżdżone przestrzenie nazw wymagały osobnych definicji
@@ -2294,6 +2574,148 @@ Vec v{1, 2, 3};   // C++20: dedukuje Vec<int> → std::vector<int>
 
 Dzięki temu CTAD obejmuje więcej konstrukcji języka i eliminuje kolejne przypadki, w których wcześniej trzeba było podawać typy jawnie.
 
+***
+
+#### (C++17): `auto` jako typ parametru szablonu niebędącego typem
+
+Szablony mogą przyjmować nie tylko typy, ale też **wartości** jako parametry
+(tzw. _non-type template parameters_). Przed C++17 typ takiej wartości trzeba
+było podać jawnie:
+```cpp
+// C++11/14 — typ parametru musi być jawny
+template <int N>
+struct Tablica { int dane[N]; };
+
+template <std::size_t N>
+struct InnaStruktura { /* ... */ };
+```
+
+C++17 pozwala użyć `auto`, żeby kompilator sam wywnioskował typ parametru:
+```cpp
+template <auto N>
+struct Tablica { int dane[N]; };
+
+Tablica<42>  t1; // N ma typ int
+Tablica<42u> t2; // N ma typ unsigned int
+```
+
+Przydatne gdy chcemy napisać szablon działający dla różnych typów całkowitych
+bez powielania kodu:
+```cpp
+template <auto Wartosc>
+constexpr auto podwoj()
+{
+    return Wartosc * 2;
+}
+
+podwoj<21>();    // zwraca int 42
+podwoj<21u>();   // zwraca unsigned int 42
+podwoj<21ll>();  // zwraca long long 42
+```
+
+***
+
+#### (C++17): Zmienne `inline`
+
+W C++ obowiązuje **reguła jednej definicji** (ODR — _One Definition Rule_):
+zmienna globalna lub statyczna może być **zdefiniowana tylko raz** w całym programie.
+Funkcje można oznaczać jako `inline`, co pozwala umieszczać ich definicje
+w nagłówkach — kompilator zapewnia, że mimo wielokrotnego dołączenia nagłówka
+powstanie tylko jedna definicja. Zmienne nie miały analogicznego mechanizmu.
+
+Przed C++17 umieszczenie definicji zmiennej w nagłówku i dołączenie go
+w wielu plikach `.cpp` powodowało błąd linkera:
+```cpp
+// naglowek.h
+int licznik = 0; // błąd: wielokrotna definicja przy dołączeniu w wielu plikach
+```
+
+Standardowe obejście: deklaracja `extern` w nagłówku i definicja w jednym pliku `.cpp`:
+```cpp
+// naglowek.h
+extern int licznik;
+
+// naglowek.cpp
+int licznik = 0;
+```
+
+C++17 wprowadza zmienne `inline` — działają analogicznie do funkcji `inline`:
+```cpp
+// naglowek.h
+inline int licznik = 0; // można dołączyć w wielu plikach — linker scala w jedną definicję
+```
+
+Jest to szczególnie przydatne dla **stałych i zmiennych statycznych w klasach**,
+które przed C++17 wymagały osobnej definicji w pliku `.cpp`:
+```cpp
+// C++11/14
+struct Konfiguracja
+{
+    static const int MAX = 100;      // deklaracja w klasie
+};
+const int Konfiguracja::MAX;         // definicja wymagana w .cpp
+
+// C++17
+struct Konfiguracja
+{
+    static inline int MAX = 100;     // definicja bezpośrednio w klasie
+};
+```
+
+Zmienne `constexpr` na poziomie klasy są od C++17 **niejawnie `inline`**,
+więc ten konkretny przypadek nie wymaga jawnego `inline`.
+
+***
+
+#### (C++17): Gwarantowane pominięcie kopiowania (copy elision)
+
+Gdy funkcja zwraca obiekt przez wartość, C++ teoretycznie tworzy obiekt tymczasowy
+i kopiuje go (lub przenosi) do miejsca docelowego. W praktyce kompilatory
+od dawna stosowały optymalizację **RVO** (_Return Value Optimization_),
+która eliminowała to kopiowanie — ale była **opcjonalna**. Kompilator mógł,
+ale nie musiał jej zastosować. Oznaczało to, że typ zwracany musiał mieć
+dostępny konstruktor kopiujący lub przenoszący, nawet jeśli w praktyce
+nigdy nie był wywoływany.
+
+C++17 **gwarantuje** pominięcie kopiowania w konkretnym przypadku:
+gdy prvalue (obiekt tymczasowy bez nazwy) jest używane do inicjalizacji
+obiektu tego samego typu. Obiekt tymczasowy jest konstruowany **bezpośrednio**
+w miejscu docelowym — nie ma żadnego pośredniego kopiowania ani przenoszenia:
+```cpp
+struct NieKopiowalny
+{
+    NieKopiowalny() = default;
+    NieKopiowalny(const NieKopiowalny&) = delete;
+    NieKopiowalny(NieKopiowalny&&) = delete;
+};
+
+NieKopiowalny stworz()
+{
+    return NieKopiowalny(); // C++17: OK — obiekt konstruowany bezpośrednio w miejscu docelowym
+}
+
+NieKopiowalny obj = stworz(); // C++17: OK — żadne kopiowanie ani przenoszenie nie ma miejsca
+```
+
+W C++11/14 powyższy kod był błędem kompilacji — mimo że kompilator i tak
+nie kopiowałby obiektu, standard wymagał **dostępności** konstruktora kopiującego
+lub przenoszącego.
+
+**Co jest gwarantowane, a co nie:**
+
+* **Gwarantowane** (C++17): inicjalizacja z prvalue tego samego typu —
+  `T obj = T(args)` lub zwracanie prvalue z funkcji.
+* **Niegwarantowane** (nadal opcjonalne): NRVO (_Named_ RVO) — gdy funkcja
+  zwraca **nazwaną** zmienną lokalną. Kompilatory niemal zawsze to robią,
+  ale standard nadal tego nie wymaga.
+
+```cpp
+NieKopiowalny stworz2()
+{
+    NieKopiowalny lokalny; // nazwana zmienna
+    return lokalny;        // NRVO — opcjonalne, zależne od kompilatora
+}
+```
 ***
 
 #### (C++20): Koncepty (`concept`, `requires`)
@@ -2697,149 +3119,6 @@ dostarczone przez bibliotekę lub napisane przez programistę.
 
 ***
 
-#### (C++17): `auto` jako typ parametru szablonu niebędącego typem
-
-Szablony mogą przyjmować nie tylko typy, ale też **wartości** jako parametry
-(tzw. _non-type template parameters_). Przed C++17 typ takiej wartości trzeba
-było podać jawnie:
-```cpp
-// C++11/14 — typ parametru musi być jawny
-template <int N>
-struct Tablica { int dane[N]; };
-
-template <std::size_t N>
-struct InnaStruktura { /* ... */ };
-```
-
-C++17 pozwala użyć `auto`, żeby kompilator sam wywnioskował typ parametru:
-```cpp
-template <auto N>
-struct Tablica { int dane[N]; };
-
-Tablica<42>  t1; // N ma typ int
-Tablica<42u> t2; // N ma typ unsigned int
-```
-
-Przydatne gdy chcemy napisać szablon działający dla różnych typów całkowitych
-bez powielania kodu:
-```cpp
-template <auto Wartosc>
-constexpr auto podwoj()
-{
-    return Wartosc * 2;
-}
-
-podwoj<21>();    // zwraca int 42
-podwoj<21u>();   // zwraca unsigned int 42
-podwoj<21ll>();  // zwraca long long 42
-```
-
-***
-
-#### (C++17): Zmienne `inline`
-
-W C++ obowiązuje **reguła jednej definicji** (ODR — _One Definition Rule_):
-zmienna globalna lub statyczna może być **zdefiniowana tylko raz** w całym programie.
-Funkcje można oznaczać jako `inline`, co pozwala umieszczać ich definicje
-w nagłówkach — kompilator zapewnia, że mimo wielokrotnego dołączenia nagłówka
-powstanie tylko jedna definicja. Zmienne nie miały analogicznego mechanizmu.
-
-Przed C++17 umieszczenie definicji zmiennej w nagłówku i dołączenie go
-w wielu plikach `.cpp` powodowało błąd linkera:
-```cpp
-// naglowek.h
-int licznik = 0; // błąd: wielokrotna definicja przy dołączeniu w wielu plikach
-```
-
-Standardowe obejście: deklaracja `extern` w nagłówku i definicja w jednym pliku `.cpp`:
-```cpp
-// naglowek.h
-extern int licznik;
-
-// naglowek.cpp
-int licznik = 0;
-```
-
-C++17 wprowadza zmienne `inline` — działają analogicznie do funkcji `inline`:
-```cpp
-// naglowek.h
-inline int licznik = 0; // można dołączyć w wielu plikach — linker scala w jedną definicję
-```
-
-Jest to szczególnie przydatne dla **stałych i zmiennych statycznych w klasach**,
-które przed C++17 wymagały osobnej definicji w pliku `.cpp`:
-```cpp
-// C++11/14
-struct Konfiguracja
-{
-    static const int MAX = 100;      // deklaracja w klasie
-};
-const int Konfiguracja::MAX;         // definicja wymagana w .cpp
-
-// C++17
-struct Konfiguracja
-{
-    static inline int MAX = 100;     // definicja bezpośrednio w klasie
-};
-```
-
-Zmienne `constexpr` na poziomie klasy są od C++17 **niejawnie `inline`**,
-więc ten konkretny przypadek nie wymaga jawnego `inline`.
-
-***
-
-#### (C++17): Gwarantowane pominięcie kopiowania (copy elision)
-
-Gdy funkcja zwraca obiekt przez wartość, C++ teoretycznie tworzy obiekt tymczasowy
-i kopiuje go (lub przenosi) do miejsca docelowego. W praktyce kompilatory
-od dawna stosowały optymalizację **RVO** (_Return Value Optimization_),
-która eliminowała to kopiowanie — ale była **opcjonalna**. Kompilator mógł,
-ale nie musiał jej zastosować. Oznaczało to, że typ zwracany musiał mieć
-dostępny konstruktor kopiujący lub przenoszący, nawet jeśli w praktyce
-nigdy nie był wywoływany.
-
-C++17 **gwarantuje** pominięcie kopiowania w konkretnym przypadku:
-gdy prvalue (obiekt tymczasowy bez nazwy) jest używane do inicjalizacji
-obiektu tego samego typu. Obiekt tymczasowy jest konstruowany **bezpośrednio**
-w miejscu docelowym — nie ma żadnego pośredniego kopiowania ani przenoszenia:
-```cpp
-struct NieKopiowalny
-{
-    NieKopiowalny() = default;
-    NieKopiowalny(const NieKopiowalny&) = delete;
-    NieKopiowalny(NieKopiowalny&&) = delete;
-};
-
-NieKopiowalny stworz()
-{
-    return NieKopiowalny(); // C++17: OK — obiekt konstruowany bezpośrednio w miejscu docelowym
-}
-
-NieKopiowalny obj = stworz(); // C++17: OK — żadne kopiowanie ani przenoszenie nie ma miejsca
-```
-
-W C++11/14 powyższy kod był błędem kompilacji — mimo że kompilator i tak
-nie kopiowałby obiektu, standard wymagał **dostępności** konstruktora kopiującego
-lub przenoszącego.
-
-**Co jest gwarantowane, a co nie:**
-
-* **Gwarantowane** (C++17): inicjalizacja z prvalue tego samego typu —
-  `T obj = T(args)` lub zwracanie prvalue z funkcji.
-* **Niegwarantowane** (nadal opcjonalne): NRVO (_Named_ RVO) — gdy funkcja
-  zwraca **nazwaną** zmienną lokalną. Kompilatory niemal zawsze to robią,
-  ale standard nadal tego nie wymaga.
-
-```cpp
-NieKopiowalny stworz2()
-{
-    NieKopiowalny lokalny; // nazwana zmienna
-    return lokalny;        // NRVO — opcjonalne, zależne od kompilatora
-}
-```
-
-***
-
 #### (C++20): Inicjalizatory oznaczone (designated initializers)
 
 C++20 wprowadza składnię pozwalającą inicjalizować pola struktury **po nazwie**,
@@ -2974,286 +3253,6 @@ struct NapisCI // porównanie case-insensitive
 
 > **Uwaga:** `operator<=>` z `= default` generuje też `operator==` z `= default`.
 > Jeśli definiujesz `<=>` ręcznie, musisz też zdefiniować `==` osobno — kompilator go nie wygeneruje.
-
-***
-
-#### Jawne operatory konwersji (explicit conversion operators)
-
-W C++98 słowo kluczowe `explicit` można było stosować tylko do konstruktorów, aby zapobiec **niejawnym konwersjom typu** wykonywanym przez konstruktory jednoargumentowe.
-Nie działało to jednak dla **operatorów konwersji**.
-
-Przykład problemu:
-
-* inteligentny wskaźnik może mieć `operator bool()`,
-* dzięki temu można go używać w instrukcjach warunkowych:
-```cpp
-if (inteligentnyWskaznik) { ... }
-```
-
-* ale `bool` w C++ jest **typem arytmetycznym**,
-* więc może konwertować się niejawnie do `int`, `double`, itd.,
-* co pozwala na niezamierzone operacje matematyczne.
-
-To klasyczny problem znany jako **idiom bezpiecznego boola** (_safe bool idiom_).
-
-##### C++11: `explicit` dla operatorów konwersji
-
-C++11 pozwala oznaczać operatory konwersji jako `explicit`, np.:
-```cpp
-explicit operator bool() const;
-```
-
-Efekt:
-
-* operator **nie może być użyty w konwersjach niejawnych**,
-
-* ale **może być użyty w kontekstach wymagających wartości logicznej**, takich jak:
-
-  * warunek `if`,
-  * warunek pętli `while` / `for`,
-  * operatory logiczne (`&&`, `||`, `!`).
-
-Czyli:
-
-* `if (obj)` → **dozwolone**,
-* `int x = obj;` → **błąd**,
-* `double y = obj;` → **błąd**.
-
-To elegancko rozwiązuje problem **safe bool**.
-
-***
-
-#### `noexcept` — specyfikacja i operator braku wyjątków
-
-W C++03 istniał mechanizm **dynamicznych specyfikacji wyjątków** (`throw(...)`),
-pozwalający deklarować, jakie wyjątki funkcja może rzucić:
-```cpp
-void funkcja() throw(std::runtime_error); // może rzucić tylko runtime_error
-void inna()    throw();                   // nie rzuca żadnych wyjątków
-```
-
-W praktyce mechanizm ten okazał się nieudany:
-
-* sprawdzanie odbywało się **w czasie wykonywania**, nie kompilacji,
-* naruszenie specyfikacji powodowało wywołanie `std::unexpected()`, a nie błąd kompilacji,
-* kompilatory nie mogły na tej podstawie robić optymalizacji,
-* kod obsługi był kosztowny nawet gdy wyjątki nie były rzucane.
-
-C++11 zastępuje go słowem kluczowym `noexcept`.
-
-##### `noexcept` jako specyfikator
-
-Oznacza, że funkcja **nie rzuca wyjątków**:
-```cpp
-void funkcja() noexcept;          // nie rzuca wyjątków
-void inna()    noexcept(true);    // równoważne — nie rzuca
-void jeszcze() noexcept(false);   // może rzucać (domyślne zachowanie)
-```
-
-Jeśli funkcja oznaczona `noexcept` rzuci wyjątek, program wywołuje `std::terminate()`
-natychmiast — bez rozwijania stosu. To gwarancja silniejsza niż w C++03.
-
-Kompilator może wykorzystać `noexcept` do **optymalizacji** — np. `std::vector`
-użyje konstruktora przenoszącego zamiast kopiującego tylko wtedy, gdy przenoszenie
-jest `noexcept`. Bez tej gwarancji musi kopiować, żeby zachować silną gwarancję wyjątków
-przy realokacji.
-
-Dlatego konstruktory przenoszące i operatory przenoszące powinny być oznaczone `noexcept`
-wszędzie tam, gdzie to możliwe:
-```cpp
-class Bufor
-{
-    int* dane;
-    std::size_t rozmiar;
-
-public:
-    Bufor(Bufor&& inny) noexcept  // bez noexcept vector będzie kopiował zamiast przenosić
-        : dane(inny.dane), rozmiar(inny.rozmiar)
-    {
-        inny.dane = nullptr;
-        inny.rozmiar = 0;
-    }
-};
-```
-
-***
-
-##### `noexcept` jako operator
-
-`noexcept(wyrażenie)` użyte jako **operator** (nie specyfikator) zwraca `bool`
-w czasie kompilacji — `true` jeśli wyrażenie nie może rzucić wyjątku:
-```cpp
-int x = 5;
-constexpr bool a = noexcept(x + 1);      // true — dodawanie int nie rzuca
-constexpr bool b = noexcept(new int(1)); // false — new może rzucić bad_alloc
-```
-
-Pozwala to warunkowo oznaczać funkcje jako `noexcept` na podstawie właściwości
-używanych przez nie typów:
-```cpp
-template <typename T>
-void zamien(T& a, T& b) noexcept(noexcept(T(std::move(a))))
-{
-    T tmp = std::move(a);
-    a = std::move(b);
-    b = std::move(tmp);
-}
-```
-
-Funkcja `zamien` jest `noexcept` dokładnie wtedy, gdy przenoszenie `T` jest `noexcept`.
-
-***
-
-##### Uzupełnienie (C++17): `noexcept` jako część typu funkcji
-
-Od C++17 `noexcept` jest częścią **typu** funkcji, a nie tylko jej deklaracji.
-Wskaźnik do funkcji `noexcept` i wskaźnik do zwykłej funkcji to różne typy:
-```cpp
-void f() noexcept;
-void g();
-
-void (*pf)() noexcept = &f; // OK
-void (*pg)() noexcept = &g; // błąd — g() nie jest noexcept
-```
-
-Przed C++17 obie deklaracje miały ten sam typ wskaźnika, co uniemożliwiało
-kompilatorowi i narzędziom statycznej analizy dokładniejsze sprawdzanie gwarancji wyjątków.
-
-***
-
-#### Aliasowanie szablonów (template aliases)
-
-W C++03 można było tworzyć `typedef`, ale tylko jako alias **konkretnego typu**, np.:
-
-* alias typu zwykłego,
-* alias konkretnej specjalizacji szablonu.
-
-Nie można było tworzyć aliasów **samych szablonów**.
-
-Przykład niepoprawny w C++03:
-```cpp
-template <typename Pierwszy, typename Drugi, int Trzeci>
-class JakisTyp;
-
-template <typename Drugi>
-typedef JakisTyp<InnyTyp, Drugi, 5> NazwaTypedefu; // Niepoprawne w C++03
-```
-
-##### C++11: aliasy szablonów przez `using`
-
-C++11 wprowadza składnię:
-```cpp
-template <typename Pierwszy, typename Drugi, int Trzeci>
-class JakisTyp;
-
-template <typename Drugi>
-using NazwaTypu = JakisTyp<InnyTyp, Drugi, 5>;
-```
-
-To jest **pełnoprawny alias szablonu**.
-
-***
-
-##### `using` jako nowoczesny zamiennik `typedef`
-
-```cpp
-typedef void (*TypFunkcji)(double); // stary styl
-using TypFunkcji = void (*)(double); // nowy styl
-```
-
-Zalety `using`:
-
-* czytelniejszy,
-* działa z aliasami szablonów,
-* lepiej współpracuje z `template <...>`.
-
-***
-
-##### (C++14): zmienne szablonowe (variable templates)
-
-W poprzednich wersjach C++ szablonami mogły być jedynie funkcje, klasy oraz aliasy typów.
-C++14 rozszerza ten mechanizm, pozwalając tworzyć **szablonowe zmienne** — czyli zmienne, których typ i wartość zależą od parametru szablonu.
-
-Przykładowo, można zdefiniować stałą `PI` zależną od typu:
-```cpp
-template <typename T>
-constexpr T PI = T(3.141592653589793238462643383);
-```
-
-Dzięki temu:
-```cpp
-double d = PI<double>;       // 3.1415926535897931...
-float  f = PI<float>;        // 3.1415927f
-int    i = PI<int>;          // 3
-```
-
-Zmienne szablonowe podlegają **tym samym zasadom specjalizacji**, co funkcje i klasy szablonowe:
-```cpp
-template <>
-constexpr const char* PI<const char*> = "pi";
-```
-
-Mechanizm ten jest szczególnie przydatny do definiowania:
-
-* stałych zależnych od typu (np. `epsilon<T>`, `zero<T>`, `identity<T>`),
-* parametrów konfiguracyjnych w metaprogramowaniu,
-* wartości używanych w kontekstach `constexpr`.
-
-Zmienne szablonowe stanowią naturalne uzupełnienie aliasów szablonów z C++11 i są ważnym elementem nowoczesnego stylu programowania szablonowego.
-
-***
-
-#### Unia bez ograniczeń (unrestricted unions)
-
-W C++03 unie (`union`) miały poważne ograniczenia:
-
-* nie mogły zawierać obiektów z **nietrywialnym konstruktorem** lub **destruktorem**,
-* nie mogły zawierać typów z nietrywialnymi funkcjami specjalnymi.
-
-C++11 **znosi część tych ograniczeń**.
-
-Jeśli unia zawiera typ z nietrywialnymi funkcjami specjalnymi, to:
-
-* kompilator **nie wygeneruje automatycznie** odpowiednich funkcji specjalnych dla unii,
-* trzeba je zdefiniować ręcznie.
-
-Przykład unii dozwolonej w C++11:
-```cpp
-#include <new> // Potrzebne do użycia placement 'new'.
-
-struct Punkt
-{
-    int a;
-    int b;
-
-    Punkt() {}
-
-    Punkt(int x, int y)
-        : a(x), b(y) {} // ← "poprawiony błąd 'x(a), y(b)' z przykładu z wikipedii."
-};
-
-union MojaUnia
-{
-    int z;
-    double w;
-    Punkt p; // Niepoprawne w C++03; poprawne w C++11.
-
-    // Z powodu składowej Punkt, teraz potrzebna jest definicja konstruktora.
-    MojaUnia() {}
-
-    MojaUnia(const Punkt& punktParam)
-        : p(punktParam) {} // Konstruuje obiekt Punkt z użyciem listy inicjalizacyjnej.
-
-    MojaUnia& operator=(const Punkt& punktParam)
-    {
-        // Przypisuje obiekt Punkt z użyciem placement 'new'.
-        new (&p) Punkt(punktParam);
-        return *this;
-    }
-};
-```
-
-Zmiany te **nie psują istniejącego kodu**, ponieważ jedynie **luzują wcześniejsze ograniczenia**.
 
 ***
 
@@ -3772,7 +3771,6 @@ class JakisTyp
     JakisTyp(InnyTyp wartosc);
 };
 ```
-
 ***
 
 ##### Jawnie usunięte funkcje (explicitly deleted functions)
@@ -3813,7 +3811,6 @@ class NieKopiowalny
     NieKopiowalny& operator=(const NieKopiowalny&) = delete;
 };
 ```
-
 ***
 
 #### Typ `long long int`
@@ -4163,7 +4160,6 @@ Przykład:
 ```cpp
 [[nodiscard]] int policz();
 ```
-
 ***
 
 ##### **Uzupełnienie (C++20): atrybut `[[likely]]` i `[[unlikely]]`**
@@ -4466,68 +4462,6 @@ z `<algorithm>` — pod warunkiem, że nie wykonują operacji niedozwolonych w `
 
 ***
 
-#### (C++20/C++23): `std::ranges` i `std::format`
-
-##### `std::ranges` (C++20)
-
-C++20 wprowadza bibliotekę `<ranges>`, która dostarcza nowe podejście do algorytmów:
-zamiast par iteratorów (`begin`, `end`) operujemy na **zakresach** (_ranges_) — obiektach,
-które wiedzą, gdzie zaczyna się i kończy sekwencja.
-
-Zakresy pozwalają na **leniwe komponowanie operacji** (_lazy composition_) bez tworzenia
-kontenerów pośrednich:
-```cpp
-#include <ranges>
-#include <vector>
-#include <iostream>
-
-std::vector<int> v = {1, 2, 3, 4, 5, 6, 7, 8};
-
-// Filtruj parzyste, pomnóż przez 2 — żadnych kopii, przetwarzanie leniwe
-for (int x : v | std::views::filter([](int n){ return n % 2 == 0; })
-               | std::views::transform([](int n){ return n * 2; }))
-{
-    std::cout << x << " "; // 4 8 12 16
-}
-```
-
-C++23 rozszerza `std::ranges` o nowe widoki i algorytmy, m.in.:
-`std::views::zip`, `std::views::enumerate`, `std::views::chunk`,
-`std::views::slide`, `std::views::join_with`, `std::ranges::fold_left`.
-
-***
-
-##### `std::format` (C++20)
-
-C++20 wprowadza `<format>` — bezpieczną typowo alternatywę dla `printf` i wygodniejszą
-od budowania napisów przez `std::ostringstream`:
-```cpp
-#include <format>
-
-std::string s = std::format("Witaj, {}! Masz {} lat.", "Ania", 30);
-// s == "Witaj, Ania! Masz 30 lat."
-
-std::string liczba = std::format("{:.2f}", 3.14159);
-// liczba == "3.14"
-```
-
-Format jest sprawdzany **w czasie kompilacji** — błędna specyfikacja formatu
-to błąd kompilacji, a nie błąd wykonania.
-
-**C++23 rozszerza `std::format` o:**
-* `std::print` i `std::println` — bezpośrednie wypisywanie sformatowanego tekstu
-  bez `std::cout << std::format(...)`,
-* formatowanie zakresów i kontenerów (`std::vector`, `std::map` itd.) bez ręcznego iterowania,
-* formatowanie krotek i par.
-
-```cpp
-// C++23
-std::println("Wektor: {}", std::vector<int>{1, 2, 3});
-// Wypisze: Wektor: [1, 2, 3]
-```
-
-***
-
 #### (C++17): `std::string_view`
 
 Funkcje przyjmujące napisy w C++ miały przed C++17 problem z wydajnością:
@@ -4595,69 +4529,6 @@ std::string_view niebezpieczne()
 
 **Zalecenie:** używaj `std::string_view` jako typ parametru funkcji wszędzie tam,
 gdzie wcześniej używałeś `const std::string&` i nie potrzebujesz własności nad danymi.
-
-***
-
-#### (C++20): `std::span`
-
-`std::span<T>` (nagłówek `<span>`) to **niewłaścicielski widok** na ciągły
-obszar pamięci — analogiczny do `std::string_view`, ale dla dowolnych typów,
-nie tylko znaków. W przeciwieństwie do `std::string_view`, `std::span` pozwala
-**modyfikować** elementy.
-
-Przed C++20 funkcje przyjmujące tablice lub wektory miały problem z ujednoliceniem
-interfejsu — trzeba było pisać wiele przeciążeń lub przyjmować parę wskaźnik+rozmiar:
-```cpp
-// C++11/17 — trzy różne przeciążenia dla tego samego zadania
-void przetwarzaj(const std::vector<int>& v);
-void przetwarzaj(const int* ptr, std::size_t n);
-void przetwarzaj(std::array<int, 5>& arr);
-```
-
-C++20 rozwiązuje to przez `std::span`:
-```cpp
-#include <span>
-
-void przetwarzaj(std::span<int> dane)
-{
-    for (int& x : dane)
-        x *= 2;
-}
-
-std::vector<int> v = {1, 2, 3};
-int tab[] = {4, 5, 6};
-std::array<int, 3> arr = {7, 8, 9};
-
-przetwarzaj(v);    // działa
-przetwarzaj(tab);  // działa
-przetwarzaj(arr);  // działa
-```
-
-**Rozmiar statyczny i dynamiczny:**
-
-`std::span` może mieć rozmiar znany w czasie kompilacji (_static extent_)
-lub w czasie wykonywania (_dynamic extent_):
-```cpp
-std::span<int>       dynamiczny = v;    // rozmiar znany w runtime
-std::span<int, 3>    statyczny  = arr;  // rozmiar 3 znany w czasie kompilacji
-```
-
-**Podzakresy:**
-```cpp
-std::span<int> s(v);
-
-s.first(2);        // pierwsze 2 elementy
-s.last(2);         // ostatnie 2 elementy
-s.subspan(1, 2);   // elementy od indeksu 1, długość 2
-```
-
-**Ważne:** `std::span` nie jest właścicielem danych — oryginalny kontener
-musi żyć przez cały czas życia `span`. Modyfikacje przez `span` modyfikują
-oryginalne dane.
-
-> **Zalecenie:** używaj `std::span<T>` jako parametru funkcji wszędzie tam,
-> gdzie wcześniej przyjmowałeś parę `(T*, size_t)` lub gdzie pisałeś
-> wielokrotne przeciążenia dla różnych kontenerów ciągłych.
 
 ***
 
@@ -4865,153 +4736,6 @@ Używaj `std::byte` wszędzie tam, gdzie masz do czynienia z surowymi danymi
 binarnymi (bufory sieciowe, serializacja, operacje na plikach binarnych) —
 zamiast `char*` lub `unsigned char*`. Poprawia to czytelność i eliminuje
 przypadkowe traktowanie danych binarnych jako tekstu.
-
-***
-
-#### (C++20): `std::bit_cast`
-
-Reinterpretacja bitowej reprezentacji jednego typu jako innego typu była
-przed C++20 możliwa przez `memcpy` lub przez `reinterpret_cast` na wskaźnikach —
-obie metody są nieeleganckie, a druga jest technicznie niezdefiniowanym
-zachowaniem w wielu przypadkach (naruszenie strict aliasing).
-
-C++20 wprowadza `std::bit_cast<To>(from)` (nagłówek `<bit>`) —
-bezpieczną, `constexpr`-kompatybilną reinterpretację bitową:
-```cpp
-#include <bit>
-#include <cstdint>
-
-float f = 1.0f;
-
-// Pobierz bitową reprezentację float jako uint32_t
-uint32_t bits = std::bit_cast<uint32_t>(f); // 0x3F800000
-
-// Odwrotnie
-float z_powrotem = std::bit_cast<float>(bits); // 1.0f
-```
-
-Wymagania:
-
-* `sizeof(To) == sizeof(From)` — typy muszą mieć ten sam rozmiar,
-* oba typy muszą być **trivially copyable**,
-* wynik jest `constexpr` jeśli oba typy są odpowiednie.
-
-Typowe zastosowania:
-
-* inspekcja reprezentacji IEEE 754 liczb zmiennoprzecinkowych,
-* niskopoziomowe protokoły sieciowe i serializacja,
-* implementacje algorytmów korzystających z reprezentacji bitowej
-  (np. szybki odwrotny pierwiastek kwadratowy).
-
-```cpp
-// Klasyczny przykład: sprawdzenie bitu znaku float
-float f = -3.14f;
-uint32_t bits = std::bit_cast<uint32_t>(f);
-bool ujemna = (bits >> 31) & 1; // true
-```
-
-***
-
-#### (C++20): Operacje bitowe (`<bit>`)
-
-C++20 dodaje nagłówek `<bit>` z zestawem funkcji do operacji na bitowej
-reprezentacji liczb całkowitych bez znaku. Przed C++20 operacje te
-wymagały implementacji zależnych od kompilatora (np. `__builtin_popcount` w GCC)
-lub ręcznego pisania algorytmów.
-
-**Liczenie bitów:**
-```cpp
-#include <bit>
-#include <cstdint>
-
-uint32_t x = 0b1010'1100u;
-
-std::popcount(x);        // 4 — liczba bitów ustawionych na 1
-std::countl_zero(x);     // liczba zer wiodących (od lewej)
-std::countl_one(x);      // liczba jedynek wiodących (od lewej)
-std::countr_zero(x);     // liczba zer końcowych (od prawej)
-std::countr_one(x);      // liczba jedynek końcowych (od prawej)
-```
-
-**Potęgi dwójki:**
-```cpp
-std::has_single_bit(8u);       // true — 8 jest potęgą dwójki
-std::has_single_bit(6u);       // false
-
-std::bit_ceil(5u);             // 8 — najmniejsza potęga dwójki >= 5
-std::bit_floor(5u);            // 4 — największa potęga dwójki <= 5
-std::bit_width(5u);            // 3 — minimalna liczba bitów do reprezentacji 5
-```
-
-**Rotacje bitowe:**
-```cpp
-uint8_t b = 0b1010'0001u;
-
-std::rotl(b, 1);   // 0b0100'0011 — rotacja w lewo o 1
-std::rotr(b, 1);   // 0b1101'0000 — rotacja w prawo o 1 (uwaga: przykład poglądowy)
-```
-
-Wszystkie funkcje działają tylko dla typów całkowitych **bez znaku**
-i są `constexpr`.
-
-***
-
-#### (C++20): Kalendarz i strefy czasowe (`<chrono>`)
-
-C++20 znacząco rozszerza nagłówek `<chrono>` o obsługę kalendarza
-i stref czasowych. Przed C++20 `<chrono>` zawierał tylko typy czasu trwania
-(`duration`) i punkty w czasie (`time_point`), ale nie miał pojęcia
-o datach, godzinach ani strefach czasowych.
-
-**Typy dat:**
-```cpp
-#include <chrono>
-using namespace std::chrono;
-
-// Konstruowanie dat
-year_month_day dzisDzien = 2024y / January / 15;
-year_month_day innyDzien = {year(2024), month(1), day(15)};
-
-// Dostęp do składowych
-dzisDzien.year();   // 2024
-dzisDzien.month();  // January
-dzisDzien.day();    // 15
-
-// Sprawdzenie poprawności daty
-dzisDzien.ok();     // true — data jest poprawna
-(2024y / February / 30).ok(); // false — 30 lutego nie istnieje
-```
-
-**Arytmetyka na datach:**
-```cpp
-year_month_day data = 2024y / March / 1;
-
-// Dodawanie miesięcy i lat
-auto nastepnyMiesiac = data + months{1};  // 2024/April/1
-auto nastepnyRok     = data + years{1};   // 2025/March/1
-```
-
-**Strefy czasowe:**
-```cpp
-// Bieżący czas w UTC
-auto teraz = system_clock::now();
-
-// Konwersja do strefy czasowej
-auto* strefa = locate_zone("Europe/Warsaw");
-auto lokalny = zoned_time{strefa, teraz};
-
-std::cout << lokalny << "\n"; // wypisuje czas lokalny z offsetem
-```
-
-**Formatowanie dat:**
-```cpp
-// C++20 + std::format
-auto data = 2024y / January / 15;
-std::string s = std::format("{:%Y-%m-%d}", data); // "2024-01-15"
-```
-
-> **Nota:** obsługa stref czasowych wymaga dostępu do bazy danych stref
-> (IANA Time Zone Database). Na Windows może wymagać dodatkowej konfiguracji.
 
 ***
 
@@ -5228,6 +4952,278 @@ std::expint(x);            // całka wykładnicza
 
 > **Nota:** funkcje te są przeznaczone dla kodu naukowego i inżynierskiego.
 > W typowych aplikacjach biznesowych lub systemowych rzadko są potrzebne.
+
+***
+
+#### (C++20): `std::span`
+
+`std::span<T>` (nagłówek `<span>`) to **niewłaścicielski widok** na ciągły
+obszar pamięci — analogiczny do `std::string_view`, ale dla dowolnych typów,
+nie tylko znaków. W przeciwieństwie do `std::string_view`, `std::span` pozwala
+**modyfikować** elementy.
+
+Przed C++20 funkcje przyjmujące tablice lub wektory miały problem z ujednoliceniem
+interfejsu — trzeba było pisać wiele przeciążeń lub przyjmować parę wskaźnik+rozmiar:
+```cpp
+// C++11/17 — trzy różne przeciążenia dla tego samego zadania
+void przetwarzaj(const std::vector<int>& v);
+void przetwarzaj(const int* ptr, std::size_t n);
+void przetwarzaj(std::array<int, 5>& arr);
+```
+
+C++20 rozwiązuje to przez `std::span`:
+```cpp
+#include <span>
+
+void przetwarzaj(std::span<int> dane)
+{
+    for (int& x : dane)
+        x *= 2;
+}
+
+std::vector<int> v = {1, 2, 3};
+int tab[] = {4, 5, 6};
+std::array<int, 3> arr = {7, 8, 9};
+
+przetwarzaj(v);    // działa
+przetwarzaj(tab);  // działa
+przetwarzaj(arr);  // działa
+```
+
+**Rozmiar statyczny i dynamiczny:**
+
+`std::span` może mieć rozmiar znany w czasie kompilacji (_static extent_)
+lub w czasie wykonywania (_dynamic extent_):
+```cpp
+std::span<int>       dynamiczny = v;    // rozmiar znany w runtime
+std::span<int, 3>    statyczny  = arr;  // rozmiar 3 znany w czasie kompilacji
+```
+
+**Podzakresy:**
+```cpp
+std::span<int> s(v);
+
+s.first(2);        // pierwsze 2 elementy
+s.last(2);         // ostatnie 2 elementy
+s.subspan(1, 2);   // elementy od indeksu 1, długość 2
+```
+
+**Ważne:** `std::span` nie jest właścicielem danych — oryginalny kontener
+musi żyć przez cały czas życia `span`. Modyfikacje przez `span` modyfikują
+oryginalne dane.
+
+> **Zalecenie:** używaj `std::span<T>` jako parametru funkcji wszędzie tam,
+> gdzie wcześniej przyjmowałeś parę `(T*, size_t)` lub gdzie pisałeś
+> wielokrotne przeciążenia dla różnych kontenerów ciągłych.
+
+***
+
+#### (C++20): `std::bit_cast`
+
+Reinterpretacja bitowej reprezentacji jednego typu jako innego typu była
+przed C++20 możliwa przez `memcpy` lub przez `reinterpret_cast` na wskaźnikach —
+obie metody są nieeleganckie, a druga jest technicznie niezdefiniowanym
+zachowaniem w wielu przypadkach (naruszenie strict aliasing).
+
+C++20 wprowadza `std::bit_cast<To>(from)` (nagłówek `<bit>`) —
+bezpieczną, `constexpr`-kompatybilną reinterpretację bitową:
+```cpp
+#include <bit>
+#include <cstdint>
+
+float f = 1.0f;
+
+// Pobierz bitową reprezentację float jako uint32_t
+uint32_t bits = std::bit_cast<uint32_t>(f); // 0x3F800000
+
+// Odwrotnie
+float z_powrotem = std::bit_cast<float>(bits); // 1.0f
+```
+
+Wymagania:
+
+* `sizeof(To) == sizeof(From)` — typy muszą mieć ten sam rozmiar,
+* oba typy muszą być **trivially copyable**,
+* wynik jest `constexpr` jeśli oba typy są odpowiednie.
+
+Typowe zastosowania:
+
+* inspekcja reprezentacji IEEE 754 liczb zmiennoprzecinkowych,
+* niskopoziomowe protokoły sieciowe i serializacja,
+* implementacje algorytmów korzystających z reprezentacji bitowej
+  (np. szybki odwrotny pierwiastek kwadratowy).
+
+```cpp
+// Klasyczny przykład: sprawdzenie bitu znaku float
+float f = -3.14f;
+uint32_t bits = std::bit_cast<uint32_t>(f);
+bool ujemna = (bits >> 31) & 1; // true
+```
+
+***
+
+#### (C++20): Operacje bitowe (`<bit>`)
+
+C++20 dodaje nagłówek `<bit>` z zestawem funkcji do operacji na bitowej
+reprezentacji liczb całkowitych bez znaku. Przed C++20 operacje te
+wymagały implementacji zależnych od kompilatora (np. `__builtin_popcount` w GCC)
+lub ręcznego pisania algorytmów.
+
+**Liczenie bitów:**
+```cpp
+#include <bit>
+#include <cstdint>
+
+uint32_t x = 0b1010'1100u;
+
+std::popcount(x);        // 4 — liczba bitów ustawionych na 1
+std::countl_zero(x);     // liczba zer wiodących (od lewej)
+std::countl_one(x);      // liczba jedynek wiodących (od lewej)
+std::countr_zero(x);     // liczba zer końcowych (od prawej)
+std::countr_one(x);      // liczba jedynek końcowych (od prawej)
+```
+
+**Potęgi dwójki:**
+```cpp
+std::has_single_bit(8u);       // true — 8 jest potęgą dwójki
+std::has_single_bit(6u);       // false
+
+std::bit_ceil(5u);             // 8 — najmniejsza potęga dwójki >= 5
+std::bit_floor(5u);            // 4 — największa potęga dwójki <= 5
+std::bit_width(5u);            // 3 — minimalna liczba bitów do reprezentacji 5
+```
+
+**Rotacje bitowe:**
+```cpp
+uint8_t b = 0b1010'0001u;
+
+std::rotl(b, 1);   // 0b0100'0011 — rotacja w lewo o 1
+std::rotr(b, 1);   // 0b1101'0000 — rotacja w prawo o 1 (uwaga: przykład poglądowy)
+```
+
+Wszystkie funkcje działają tylko dla typów całkowitych **bez znaku**
+i są `constexpr`.
+
+***
+
+#### (C++20): Kalendarz i strefy czasowe (`<chrono>`)
+
+C++20 znacząco rozszerza nagłówek `<chrono>` o obsługę kalendarza
+i stref czasowych. Przed C++20 `<chrono>` zawierał tylko typy czasu trwania
+(`duration`) i punkty w czasie (`time_point`), ale nie miał pojęcia
+o datach, godzinach ani strefach czasowych.
+
+**Typy dat:**
+```cpp
+#include <chrono>
+using namespace std::chrono;
+
+// Konstruowanie dat
+year_month_day dzisDzien = 2024y / January / 15;
+year_month_day innyDzien = {year(2024), month(1), day(15)};
+
+// Dostęp do składowych
+dzisDzien.year();   // 2024
+dzisDzien.month();  // January
+dzisDzien.day();    // 15
+
+// Sprawdzenie poprawności daty
+dzisDzien.ok();     // true — data jest poprawna
+(2024y / February / 30).ok(); // false — 30 lutego nie istnieje
+```
+
+**Arytmetyka na datach:**
+```cpp
+year_month_day data = 2024y / March / 1;
+
+// Dodawanie miesięcy i lat
+auto nastepnyMiesiac = data + months{1};  // 2024/April/1
+auto nastepnyRok     = data + years{1};   // 2025/March/1
+```
+
+**Strefy czasowe:**
+```cpp
+// Bieżący czas w UTC
+auto teraz = system_clock::now();
+
+// Konwersja do strefy czasowej
+auto* strefa = locate_zone("Europe/Warsaw");
+auto lokalny = zoned_time{strefa, teraz};
+
+std::cout << lokalny << "\n"; // wypisuje czas lokalny z offsetem
+```
+
+**Formatowanie dat:**
+```cpp
+// C++20 + std::format
+auto data = 2024y / January / 15;
+std::string s = std::format("{:%Y-%m-%d}", data); // "2024-01-15"
+```
+
+> **Nota:** obsługa stref czasowych wymaga dostępu do bazy danych stref
+> (IANA Time Zone Database). Na Windows może wymagać dodatkowej konfiguracji.
+
+***
+
+#### (C++20/C++23): `std::ranges` i `std::format`
+
+##### `std::ranges` (C++20)
+
+C++20 wprowadza bibliotekę `<ranges>`, która dostarcza nowe podejście do algorytmów:
+zamiast par iteratorów (`begin`, `end`) operujemy na **zakresach** (_ranges_) — obiektach,
+które wiedzą, gdzie zaczyna się i kończy sekwencja.
+
+Zakresy pozwalają na **leniwe komponowanie operacji** (_lazy composition_) bez tworzenia
+kontenerów pośrednich:
+```cpp
+#include <ranges>
+#include <vector>
+#include <iostream>
+
+std::vector<int> v = {1, 2, 3, 4, 5, 6, 7, 8};
+
+// Filtruj parzyste, pomnóż przez 2 — żadnych kopii, przetwarzanie leniwe
+for (int x : v | std::views::filter([](int n){ return n % 2 == 0; })
+               | std::views::transform([](int n){ return n * 2; }))
+{
+    std::cout << x << " "; // 4 8 12 16
+}
+```
+
+C++23 rozszerza `std::ranges` o nowe widoki i algorytmy, m.in.:
+`std::views::zip`, `std::views::enumerate`, `std::views::chunk`,
+`std::views::slide`, `std::views::join_with`, `std::ranges::fold_left`.
+
+***
+
+##### `std::format` (C++20)
+
+C++20 wprowadza `<format>` — bezpieczną typowo alternatywę dla `printf` i wygodniejszą
+od budowania napisów przez `std::ostringstream`:
+```cpp
+#include <format>
+
+std::string s = std::format("Witaj, {}! Masz {} lat.", "Ania", 30);
+// s == "Witaj, Ania! Masz 30 lat."
+
+std::string liczba = std::format("{:.2f}", 3.14159);
+// liczba == "3.14"
+```
+
+Format jest sprawdzany **w czasie kompilacji** — błędna specyfikacja formatu
+to błąd kompilacji, a nie błąd wykonania.
+
+**C++23 rozszerza `std::format` o:**
+* `std::print` i `std::println` — bezpośrednie wypisywanie sformatowanego tekstu
+  bez `std::cout << std::format(...)`,
+* formatowanie zakresów i kontenerów (`std::vector`, `std::map` itd.) bez ręcznego iterowania,
+* formatowanie krotek i par.
+
+```cpp
+// C++23
+std::println("Wektor: {}", std::vector<int>{1, 2, 3});
+// Wypisze: Wektor: [1, 2, 3]
+```
 
 ***
 
