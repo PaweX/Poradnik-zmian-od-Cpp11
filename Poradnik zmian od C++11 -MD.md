@@ -2303,7 +2303,7 @@ Jeśli unia zawiera typ z nietrywialnymi funkcjami specjalnymi, to:
 * kompilator **nie wygeneruje automatycznie** odpowiednich funkcji specjalnych dla unii,
 * trzeba je zdefiniować ręcznie.
 
-Przykład unii dozwolonej w 
+Przykład unii dozwolonej w C++11:
 ```cpp
 #include <new> // Potrzebne do użycia placement 'new'.
 
@@ -2394,7 +2394,7 @@ Przed C++17 wymagało to specjalizacji szablonów lub techniki SFINAE (Substitut
 
 Przykład problemu w C++11/14 — funkcja wypisująca wartość, inaczej dla liczb i napisów:
 ```cpp
-//  trzeba pisać dwie specjalizacje
+//  C++11: trzeba pisać dwie specjalizacje
 template <typename T>
 void wypisz(T val) { std::cout << val; }
 
@@ -6849,7 +6849,7 @@ Wszystkie pozycje z C++11 pozostały w tym samym stanie.
 
 ### C++17 (usunięcia elementów przestarzałych)
 
-C++17 usuwa większość elementów oznaczonych jako przestarzałe w 
+C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
 
 * Dynamiczne specyfikacje wyjątków (`throw(...)`) — **całkowicie usunięte** z języka.
 
