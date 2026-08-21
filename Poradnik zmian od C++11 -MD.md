@@ -304,7 +304,7 @@ To nie było poprawne w C++03, ponieważ `pobierzTrzy() + 7` nie jest wyrażenie
 
 ***
 
-##### C++11: słowo kluczowe `constexpr`
+##### Słowo kluczowe `constexpr`
 
 C++11 wprowadził `constexpr`, które pozwala oznaczyć funkcję, konstruktor lub zmienną jako **możliwą do ewaluacji w czasie kompilacji**:
 ```cpp
@@ -756,7 +756,7 @@ Jednak w C++03 listy inicjalizacyjne działały **tylko** dla struktur/klas zgod
 
 ***
 
-##### C++11: listy inicjalizacyjne dla wszystkich klas
+##### Listy inicjalizacyjne dla wszystkich klas
 
 W C++11 listy inicjalizacyjne zostały rozszerzone i mogą być używane dla **wszystkich typów**, w tym:
 
@@ -2225,7 +2225,7 @@ template <typename Drugi>
 typedef JakisTyp<InnyTyp, Drugi, 5> NazwaTypedefu; // Niepoprawne w C++03
 ```
 
-##### C++11: aliasy szablonów przez `using`
+##### Aliasy szablonów przez `using`
 
 C++11 wprowadza składnię:
 ```cpp
@@ -2303,7 +2303,7 @@ Jeśli unia zawiera typ z nietrywialnymi funkcjami specjalnymi, to:
 * kompilator **nie wygeneruje automatycznie** odpowiednich funkcji specjalnych dla unii,
 * trzeba je zdefiniować ręcznie.
 
-Przykład unii dozwolonej w C++11:
+Przykład unii dozwolonej w 
 ```cpp
 #include <new> // Potrzebne do użycia placement 'new'.
 
@@ -2394,7 +2394,7 @@ Przed C++17 wymagało to specjalizacji szablonów lub techniki SFINAE (Substitut
 
 Przykład problemu w C++11/14 — funkcja wypisująca wartość, inaczej dla liczb i napisów:
 ```cpp
-// C++11: trzeba pisać dwie specjalizacje
+//  trzeba pisać dwie specjalizacje
 template <typename T>
 void wypisz(T val) { std::cout << val; }
 
@@ -6776,7 +6776,7 @@ Standard **C++11** wprowadził zestaw zmian mających na celu poprawę zgodnośc
 
 #### Typy i makra
 
-* `long long` — typ całkowity gwarantowany co najpmniej na 64 bity,
+* `long long` — typ całkowity gwarantowany co najmniej na 64 bity,
 * `__func__` — makro zwracające nazwę bieżącej funkcji.
 
 ***
@@ -6849,7 +6849,7 @@ Wszystkie pozycje z C++11 pozostały w tym samym stanie.
 
 ### C++17 (usunięcia elementów przestarzałych)
 
-C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
+C++17 usuwa większość elementów oznaczonych jako przestarzałe w 
 
 * Dynamiczne specyfikacje wyjątków (`throw(...)`) — **całkowicie usunięte** z języka.
 
