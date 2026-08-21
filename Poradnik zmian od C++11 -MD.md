@@ -364,6 +364,37 @@ Jednak zgodnie z powyższymi zasadami, mogą modyfikować tylko te obiekty, któ
 
 Poluzowanie ograniczeń `constexpr` w C++14 umożliwia tworzenie bardziej złożonych algorytmów wykonywanych w czasie kompilacji, co stanowi fundament dla dalszych rozszerzeń w C++17 i C++20.
 
+###### Uzupełnienie (C++20): dalsze rozszerzenie `constexpr`
+
+C++20 znosi kolejne ograniczenia funkcji `constexpr`:
+
+* **Funkcje wirtualne** — funkcja `constexpr` może być wirtualna:
+```cpp
+struct Figura
+{
+    constexpr virtual double pole() const = 0;
+};
+
+struct Kolo : Figura
+{
+    double r;
+    constexpr double pole() const override { return 3.14159 * r * r; }
+};
+```
+
+* **`try`/`catch`** — bloki `try`/`catch` są dozwolone w funkcjach `constexpr`,
+  ale rzucanie wyjątków nadal powoduje błąd kompilacji gdy funkcja jest wywoływana
+  w kontekście stałym.
+
+* **`dynamic_cast` i `typeid`** — dozwolone w kontekście `constexpr`
+  gdy wynik jest znany w czasie kompilacji.
+
+* **`union`** — zmiana aktywnego pola unii dozwolona w `constexpr`.
+
+* **Alokacja pamięci** — `new` i `delete` dozwolone wewnątrz `constexpr`
+  pod warunkiem, że pamięć zostanie zwolniona przed końcem obliczenia
+  (brak trwałej alokacji constexpr).
+
 ***
 
 ##### Różnica między `constexpr` i `consteval` oraz `constinit`
@@ -1236,6 +1267,27 @@ struct
 
 Lambdy generyczne są więc w praktyce **szablonowymi funktorami zapisanymi w postaci lambdy**, co znacząco zwiększa ich elastyczność i przydatność w kodzie generycznym.
 
+###### Uzupełnienie (C++20): jawna lista parametrów szablonu w lambdzie
+
+C++14 dodał lambdy generyczne (`auto`), ale nie pozwalał jawnie nazwać typu
+ani ograniczyć go konceptem. C++20 umożliwia podanie pełnej listy parametrów szablonu:
+```cpp
+// C++14: auto — typ anonimowy, nie można go użyć w ciele lambdy
+auto f = [](auto x) { return x * 2; };
+
+// C++20: jawna lista — typ T dostępny z nazwy
+auto g = []<typename T>(T x) { return x * 2; };
+
+// Przydatne gdy potrzebujemy T wewnątrz ciała:
+auto wypisz = []<typename T>(const std::vector<T>& v)
+{
+    for (const T& elem : v)
+        std::cout << elem << " ";
+};
+
+// Można też ograniczyć konceptem:
+auto suma = []<std::integral T>(T a, T b) { return a + b; };
+```
 ***
 
 ##### (C++14): wyrażenia przechwytywania (lambda capture expressions)
@@ -2007,7 +2059,7 @@ if (inteligentnyWskaznik) { ... }
 
 To klasyczny problem znany jako **idiom bezpiecznego boola** (_safe bool idiom_).
 
-##### C++11: `explicit` dla operatorów konwersji
+##### `explicit` dla operatorów konwersji
 
 C++11 pozwala oznaczać operatory konwersji jako `explicit`, np.:
 ```cpp
@@ -2031,6 +2083,29 @@ Czyli:
 * `double y = obj;` → **błąd**.
 
 To elegancko rozwiązuje problem **safe bool**.
+
+###### Uzupełnienie (C++20): `explicit(bool)` — warunkowy explicit
+
+C++20 pozwala uzależnić `explicit` od wyrażenia `bool` obliczanego w czasie kompilacji.
+Przydatne przy pisaniu typów opakowujących, które chcą zachować właściwości
+konwersji opakowanego typu:
+```cpp
+template <typename T>
+struct Opakowanie
+{
+    T wartosc;
+
+    // Jawna konwersja tylko gdy T sam nie jest niejawnie konwertowalny z int
+    explicit(!std::is_convertible_v<int, T>)
+    Opakowanie(T v) : wartosc(v) {}
+};
+
+Opakowanie<double> a = 42;   // OK — double jest niejawnie konwertowalny z int
+Opakowanie<std::string> b = "ala"; // OK — string konwertowalny z const char*
+```
+
+Przed C++20 uzyskanie takiego zachowania wymagało dwóch osobnych konstruktorów
+z `std::enable_if`.
 
 ***
 
@@ -3396,7 +3471,7 @@ prostych operacji na paczkach parametrów.
 > Czyli wszystko, co widać w kodzie jako stałą wartość, a nie nazwę zmiennej, wyrażenie czy wynik obliczeń:
 > `42` – literał liczbowy (int), `'A'` – literał znakowy (char), `"tekst"` – literał napisowy (string) itp.
 
-W C++03 istniały tylko dwa rodzaje literałów napisowych:
+**W C++03 istniały tylko dwa rodzaje literałów napisowych:**
 
 1. `"tekst"` → tablica zakończona znakiem null typu `const char[]`,
 2. `L"tekst"` → tablica zakończona znakiem null typu `const wchar_t[]`,
@@ -3409,9 +3484,7 @@ W C++03 istniały tylko dwa rodzaje literałów napisowych:
 * UTF‑32,
 * ani żadnego innego kodowania Unicode.
 
-***
-
-C++11 wprowadza obsługę trzech kodowań Unicode:
+**C++11 wprowadza obsługę trzech kodowań Unicode:**
 
 * UTF‑8,
 * UTF‑16,
@@ -3426,9 +3499,7 @@ Dodatkowo:
   * `char16_t` — przeznaczony do przechowywania UTF‑16,
   * `char32_t` — przeznaczony do przechowywania UTF‑32.
 
-***
-
-Tworzenie literałów napisowych dla każdego kodowania:
+**Tworzenie literałów napisowych dla każdego kodowania:**
 ```cpp
 u8"Jestem napisem UTF-8."
 u"To jest napis UTF-16."
@@ -3441,16 +3512,14 @@ Typy:
 * `u"..."` → `const char16_t[]`,
 * `U"..."` → `const char32_t[]`.
 
-***
-
-Wstawianie punktów kodowych Unicode:
+**Wstawianie punktów kodowych Unicode:**
 ```cpp
 u8"To jest znak Unicode: \u2018."
 u"To jest większy znak Unicode: \u2018."
 U"To jest znak Unicode: \U00002018."
 ```
 
-Zasady:
+**Zasady:**
 
 * liczba po `\u` to **16‑bitowy** punkt kodowy Unicode (hex, bez `0x`),
 * liczba po `\U` to **32‑bitowy** punkt kodowy Unicode,
@@ -3494,6 +3563,31 @@ Przydatne w kodzie niskopoziomowym i przy pracy z IEEE 754.
 
 ***
 
+##### Uzupełnienie (C++20): typ `char8_t`
+
+Przed C++20 literały napisowe UTF-8 (`u8"..."`) miały typ `const char[]` — taki sam
+jak zwykłe napisy, co uniemożliwiało rozróżnienie ich na poziomie systemu typów.
+
+C++20 wprowadza nowy typ `char8_t` — 8-bitowy typ bez znaku przeznaczony
+wyłącznie do przechowywania jednostek kodowych UTF-8:
+```cpp
+char8_t c = u8'a';           // C++20: typ char8_t (nie char)
+const char8_t* s = u8"ala";  // C++20: typ const char8_t[] (nie const char[])
+```
+
+`char8_t` jest odrębnym typem — nie jest aliasem `unsigned char` ani `char`.
+Pozwala to przeciążać funkcje osobno dla `char` i `char8_t`:
+```cpp
+void wypisz(const char* s);      // napisy w kodowaniu systemowym
+void wypisz(const char8_t* s);   // napisy UTF-8
+```
+
+> **Uwaga:** zmiana ta jest **łamiąca** względem C++17 — kod przypisujący
+> `u8"..."` do `const char*` nie kompiluje się w C++20. Wymaga rzutowania
+> lub zmiany typu zmiennej.
+
+***
+
 ##### Surowe literały napisowe (raw string literals)
 
 C++11 dodaje surowe literały napisowe:
@@ -3525,7 +3619,6 @@ jest równoważne:
 ```cpp
 "\"(a-z)\""
 ```
-***
 
 Surowe literały można łączyć z Unicode:
 ```cpp
@@ -3533,7 +3626,6 @@ u8R"XXX(Jestem „surowym UTF-8” napisem.)XXX"
 uR"*(To jest „surowy UTF-16” napis.)*"
 UR"(To jest „surowy UTF-32” napis.)"
 ```
-
 ***
 
 #### Literały definiowane przez użytkownika (user‑defined literals)
@@ -4178,6 +4270,36 @@ else [[unlikely]]
     ...
 }
 ```
+***
+
+##### Uzupełnienie (C++20): atrybut `[[no_unique_address]]`
+
+W C++ każdy obiekt musi mieć unikalny adres, nawet jeśli nie ma żadnych pól
+(pusta klasa zajmuje co najmniej 1 bajt). Powoduje to marnowanie pamięci
+przy przechowywaniu pustych obiektów pomocniczych (np. alokatorów, komparatorów).
+
+`[[no_unique_address]]` pozwala kompilatorowi **nie rezerwować miejsca**
+dla pola jeśli jego typ jest pusty i nie potrzebuje unikalnego adresu:
+```cpp
+struct PustyAlokator {};
+
+struct BezAtrybutu
+{
+    PustyAlokator alok; // zajmuje co najmniej 1 bajt + padding
+    int dane;
+};
+// sizeof(BezAtrybutu) == 8 (typowo)
+
+struct ZAtrybutem
+{
+    [[no_unique_address]] PustyAlokator alok; // może nie zajmować miejsca
+    int dane;
+};
+// sizeof(ZAtrybutem) == 4 (typowo)
+```
+
+Używane wewnętrznie przez implementacje STL do optymalizacji kontenerów
+z niestandardowymi alokatorami i komparatorami.
 
 ***
 
@@ -4251,12 +4373,34 @@ C++14 wprowadza szereg mniejszych, ale praktycznych rozszerzeń w standardowej b
 
 ##### `std::make_unique`
 
-Dodano funkcję `std::make_unique`, będącą odpowiednikiem `std::make_shared`, ale tworzącą obiekty zarządzane przez `std::unique_ptr`:
+`std::make_unique<T>(args...)` tworzy obiekt typu `T` na stercie i zwraca
+`std::unique_ptr<T>` — bez konieczności pisania `new`.
+
+Zamiast:
 ```cpp
-auto ptr = std::make_unique<int>(42);
+std::unique_ptr<int> ptr(new int(42)); // jawne new — działa, ale...
 ```
 
-Zapobiega to błędom związanym z ręcznym użyciem `new` i poprawia bezpieczeństwo wyjątków.
+Piszemy:
+```cpp
+auto ptr = std::make_unique<int>(42);  // bezpieczniej i czytelniej
+```
+
+Różnica nie jest tylko kosmetyczna. Przy przekazywaniu argumentów do funkcji
+kompilator może ewaluować ich wyrażenia w dowolnej kolejności. Jeśli jedno
+z wyrażeń rzuci wyjątek po tym jak `new` zaalokowało pamięć,
+ale przed przekazaniem jej do `unique_ptr` — pamięć wycieknie:
+```cpp
+// Potencjalny wyciek przy pechowej kolejności ewaluacji:
+f(std::unique_ptr<A>(new A()), mozeRzucic());
+
+// Bezpieczne — make_unique jest jedną niepodzielną operacją:
+f(std::make_unique<A>(), mozeRzucic());
+```
+
+`std::make_shared` (dostępne od C++11) działa analogicznie dla `shared_ptr`,
+a dodatkowo wykonuje **jedną alokację** zamiast dwóch — obiekt i licznik
+referencji są alokowane razem, co jest wydajniejsze.
 
 ***
 
@@ -5907,7 +6051,6 @@ Kolizje są obsługiwane wyłącznie przez **łańcuchowanie liniowe**, poniewa�
 Aby uniknąć konfliktów nazw z bibliotekami niestandardowymi, użyto przedrostka **`unordered`** zamiast **`hash`**.
 
 Nowa biblioteka udostępnia cztery typy kontenerów unordered:
-
 | Typ kontenera               | Wartość powiązana | Klucze równoważne |
 |-----------------------------|-------------------|--------------------|
 | `std::unordered_set`        | Nie               | Nie                |
@@ -5925,6 +6068,28 @@ Ta funkcja nie wymagała rozszerzeń rdzenia języka — jedynie niewielkiego ro
 * **C++20** — poprawiono wydajność hashowania i dodano `contains()`.  
 * **C++23** — rozszerzono API o nowe operacje i poprawiono integrację z `std::expected`.
 
+***
+
+### Uzupełnienie (C++20): `contains()` dla kontenerów asocjacyjnych
+
+C++20 dodaje metodę `contains()` do **wszystkich kontenerów asocjacyjnych**:
+
+* `std::map`
+* `std::unordered_map`
+* `std::set`
+* `std::unordered_set`
+
+Przed C++20 sprawdzenie, czy klucz istnieje, wymagało użycia `find()` lub `count()`:
+```cpp
+std::map<std::string, int> m = {{"ala", 1}, {"ola", 2}};
+
+// C++11/17 — niewygodne
+if (m.find("ala") != m.end()) { /* ... */ }
+if (m.count("ala") > 0)       { /* ... */ }
+
+// C++20 — czytelne i jednoznaczne
+if (m.contains("ala")) { /* ... */ }
+```
 ***
 
 ### std::array i std::forward_list
@@ -5986,25 +6151,186 @@ W systemach POSIX wyrażenia regularne są też dostępne przez bibliotekę C (`
 
 ### Ogólnego przeznaczenia inteligentne wskaźniki (General-purpose smart pointers)
 
-C++11 dostarcza `std::unique_ptr` oraz ulepszenia dla `std::shared_ptr` i `std::weak_ptr` pochodzących z TR1.
-`std::auto_ptr` jest **przestarzały** (deprecated) i nie powinien być używany w nowych programach - usunięty całkowicie w standardzie C++17.
+W C++03 zarządzanie pamięcią opierało się wyłącznie na ręcznym `new` i `delete`.
+Prowadziło to do dwóch klas błędów:
 
-> **Uwaga:** `std::unique_ptr` zastępuje `std::auto_ptr` w większości zastosowań, oferując bezpieczne semantyki przenoszenia bez niejednoznacznych zachowań kopiowania.
+* **wyciek pamięci** — programista zapomniał wywołać `delete`,
+* **użycie po zwolnieniu** — wskaźnik jest używany po tym, jak pamięć została
+  zwolniona, lub `delete` zostało wywołane dwukrotnie.
 
-#### Uzupełnienie (C++14/17/20)
-
-* **C++14** — dodano `std::make_unique`.
-* **C++17** — poprawiono integrację `std::shared_ptr` z tablicami.
-* **C++20** — inteligentne wskaźniki mogą być używane w większej liczbie kontekstów `constexpr`.
-
-  C++20 rozszerza `std::make_shared` i `std::allocate_shared` o obsługę tablic:
 ```cpp
-  auto ptr = std::make_shared<int[]>(10);    // tablica 10 int-ów
-  auto ptr2 = std::make_shared<int[5]>();    // tablica 5 int-ów (rozmiar w typie)
-  ptr[0] = 42;
+// C++03 — klasyczny problem
+void funkcja()
+{
+    int* ptr = new int(42);
+    if (warunek)
+        return; // wyciek — delete nigdy nie zostanie wywołane
+    delete ptr;
+}
 ```
 
-  Przed C++20 `std::shared_ptr` obsługiwał tablice, ale `std::make_shared` nie — trzeba było używać `std::shared_ptr<int[]>(new int[10])`.
+Jedynym narzędziem w C++03 był `std::auto_ptr` — miał poważną wadę:
+kopiowanie `auto_ptr` **przenosiło własność** (oryginał stawał się `nullptr`),
+co wyglądało jak kopiowanie, ale nim nie było. Prowadziło to do trudnych
+do wykrycia błędów.
+
+C++11 zastępuje `auto_ptr` trzema narzędziami opartymi na zasadzie **RAII**:
+obiekt przejmuje własność zasobu i zwalnia go automatycznie w destruktorze —
+bez względu na to jak kończy się funkcja (normalnie czy przez wyjątek).
+
+`std::auto_ptr` jest **przestarzały od C++11** i **usunięty w C++17**.
+
+#### `std::unique_ptr` — własność wyłączna
+
+`std::unique_ptr` reprezentuje **wyłączną własność** nad obiektem —
+dokładnie jeden `unique_ptr` jest właścicielem zasobu w danej chwili.
+Gdy `unique_ptr` wychodzi z zakresu, zasób jest automatycznie zwalniany.
+```cpp
+#include <memory>
+
+void funkcja()
+{
+    std::unique_ptr<int> ptr = std::make_unique<int>(42); // C++14
+    if (warunek)
+        return; // OK — destruktor zwolni pamięć automatycznie
+}
+```
+
+`unique_ptr` **nie można kopiować** — można go tylko **przenosić**,
+co jawnie przekazuje własność:
+```cpp
+std::unique_ptr<int> a = std::make_unique<int>(42);
+std::unique_ptr<int> b = std::move(a); // a jest teraz nullptr, b jest właścicielem
+```
+
+Używaj `unique_ptr` jako domyślnego wyboru — jest lekki
+(taki sam narzut jak surowy wskaźnik) i jednoznaczny.
+
+***
+
+#### `std::shared_ptr` — własność współdzielona
+
+`std::shared_ptr` pozwala **wielu właścicielom** współdzielić ten sam obiekt.
+Wewnętrznie utrzymuje licznik referencji — obiekt jest zwalniany gdy ostatni
+`shared_ptr` do niego zostaje zniszczony.
+
+```cpp
+std::shared_ptr<int> a = std::make_shared<int>(42);
+std::shared_ptr<int> b = a; // a i b współdzielą własność — licznik == 2
+
+b.reset();                  // b rezygnuje z własności — licznik == 1
+// gdy a wyjdzie z zakresu — licznik == 0, obiekt zostaje zwolniony
+```
+
+`shared_ptr` jest cięższy niż `unique_ptr` — wymaga dodatkowej alokacji
+dla licznika referencji. Używaj go tylko gdy rzeczywiście potrzebujesz
+współdzielonej własności.
+
+***
+
+#### `std::weak_ptr` — obserwacja bez własności
+
+`std::weak_ptr` pozwala **obserwować** obiekt zarządzany przez `shared_ptr`
+bez przejmowania własności i bez wpływania na licznik referencji.
+
+Rozwiązuje problem **cyklicznych referencji** — gdy dwa obiekty trzymają
+`shared_ptr` do siebie nawzajem, licznik nigdy nie spada do zera i pamięć wycieknie:
+```cpp
+struct Węzeł
+{
+    std::shared_ptr<Węzeł> nastepny;  // silna referencja
+    std::weak_ptr<Węzeł> poprzedni;  // słaba — nie blokuje zwolnienia
+};
+```
+
+Przed użyciem `weak_ptr` trzeba sprawdzić czy obiekt jeszcze istnieje:
+```cpp
+std::weak_ptr<int> slaby = shared;
+
+if (auto ptr = slaby.lock()) // lock() zwraca shared_ptr lub nullptr
+{
+    std::cout << *ptr;
+} // ptr wyszedł z zakresu — tymczasowa własność zwolniona
+```
+
+***
+
+#### Uzupełnienie (C++14/17)
+
+* **C++14** — dodano `std::make_unique`. Zawsze preferuj `make_unique`
+  i `make_shared` nad bezpośrednim `new` — są bezpieczniejsze i często wydajniejsze.
+* **C++17** — poprawiono integrację `std::shared_ptr` z tablicami (`shared_ptr<T[]>`),
+  ujednolicając zachowanie z `unique_ptr<T[]>`.
+
+***
+
+#### Uzupełnienie (C++20): Rozszerzenia dla inteligentnych wskaźników
+
+**Obsługa tablic w `std::make_shared` i `std::allocate_shared`:**
+
+```cpp
+auto ptr = std::make_shared<int[]>(10);    // tablica 10 int-ów
+auto ptr2 = std::make_shared<int[5]>();    // tablica 5 int-ów (rozmiar w typie)
+ptr[0] = 42;
+```
+
+Przed C++20 `std::shared_ptr` obsługiwał tablice, ale `std::make_shared` nie —
+trzeba było używać `std::shared_ptr<int[]>(new int[10])`.
+
+***
+
+#### Uzupełnienie (C++20): Atomowe inteligentne wskaźniki
+
+C++20 dodaje specjalizacje `std::atomic` dla inteligentnych wskaźników:
+
+* `std::atomic<std::shared_ptr<T>>`
+* `std::atomic<std::weak_ptr<T>>`
+
+Przed C++20 atomowe operacje na `shared_ptr` były możliwe tylko przez
+wolnostojące funkcje (`std::atomic_load`, `std::atomic_store`),
+które były **przestarzałe i niewygodne**.
+
+```cpp
+std::atomic<std::shared_ptr<Dane>> atomowyPtr;
+
+// Bezpieczny odczyt z dowolnego wątku
+auto kopia = atomowyPtr.load();
+
+// Bezpieczna zamiana
+atomowyPtr.store(std::make_shared<Dane>(nowaWartosc));
+
+// Porównaj i zamień (compare-exchange)
+auto stary = atomowyPtr.load();
+atomowyPtr.compare_exchange_strong(stary, nowyPtr);
+```
+
+Wolnostojące funkcje `std::atomic_load` i `std::atomic_store` dla `shared_ptr`
+zostały oznaczone jako **przestarzałe w C++20**.
+
+***
+
+#### Uzupełnienie (C++20): `std::to_address`
+
+`std::to_address(p)` (nagłówek `<memory>`) konwertuje dowolny
+**wskaźnikopodobny obiekt** (surowy wskaźnik, smart pointer, iterator ciągły)
+na surowy wskaźnik `T*`.
+
+Przydatne przy pisaniu generycznego kodu operującego na wskaźnikach:
+```cpp
+#include <memory>
+
+auto up = std::make_unique<int>(42);
+int* raw = std::to_address(up);         // działa dla unique_ptr
+
+int tab[] = {1, 2, 3};
+int* ptr = std::to_address(tab);        // działa dla tablic
+
+std::vector<int> v = {1, 2, 3};
+int* vptr = std::to_address(v.begin()); // działa dla iteratorów ciągłych
+```
+
+Przed C++20 uzyskanie surowego wskaźnika z różnych typów wymagało różnych metod
+(`.get()`, `.data()`, `&*it`) — `std::to_address` **ujednolica ten wzorzec**.
 
 ***
 
@@ -6450,7 +6776,7 @@ Standard **C++11** wprowadził zestaw zmian mających na celu poprawę zgodnośc
 
 #### Typy i makra
 
-* `long long` — typ całkowity gwarantowany co najmniej na 64 bity,
+* `long long` — typ całkowity gwarantowany co najpmniej na 64 bity,
 * `__func__` — makro zwracające nazwę bieżącej funkcji.
 
 ***
@@ -6486,7 +6812,7 @@ Brak zmian — żadna z późniejszych wersji standardu nie rozszerzała ani nie
 
 ***
 
-## Funkcje usunięte lub oznaczone jako przestarzałe (C++11 → C++17 → C++20)
+## Funkcje usunięte lub oznaczone jako przestarzałe (C++11 → C++26)
 
 Ta sekcja w C++11 obejmowała elementy oznaczone jako **przestarzałe (deprecated)** lub **usunięte**.
 Nowsze standardy — szczególnie **C++17** — kontynuowały proces usuwania tych elementów, a **C++20** wprowadził ponownie `export`, ale w zupełnie innym znaczeniu (moduły).
@@ -6548,6 +6874,17 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
 
 * Słowo kluczowe `export` zostało **przywrócone**, ale wyłącznie jako element **modułów**.
   Nie ma żadnego związku z eksportowanymi szablonami z C++98/03.
+
+* Większość zastosowań słowa kluczowego **`volatile`** została oznaczona
+  jako **przestarzała**. Dotyczy to m.in.:
+  - złożonych wyrażeń z `volatile` (`v++`, `v += 1` — zamiast tego `v = v + 1`),
+  - parametrów funkcji i typów zwracanych oznaczonych `volatile`,
+  - specjalizacji szablonów dla typów `volatile`.
+
+  `volatile` pozostaje dozwolony dla zmiennych lokalnych i jako kwalifikator
+  wskaźnika — głównie dla kodu niskopoziomowego (rejestry sprzętowe, sygnały).
+  W praktyce do synchronizacji wątków zawsze należy używać `std::atomic`,
+  a nie `volatile`.
 
 * Brak dodatkowych usunięć lub deprecacji w zakresie elementów wymienionych w tej sekcji.
 
