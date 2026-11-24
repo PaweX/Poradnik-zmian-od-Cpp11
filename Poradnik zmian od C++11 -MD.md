@@ -4590,6 +4590,28 @@ Dla kontenerów asocjacyjnych (`std::map`, `std::set`) działa tylko `std::erase
 
 ***
 
+##### Uzupełnienie (C++20): `contains()` dla kontenerów asocjacyjnych
+
+C++20 dodaje metodę `contains()` do **wszystkich kontenerów asocjacyjnych**:
+
+* `std::map`
+* `std::unordered_map`
+* `std::set`
+* `std::unordered_set`
+
+Przed C++20 sprawdzenie, czy klucz istnieje, wymagało użycia `find()` lub `count()`:
+```cpp
+std::map<std::string, int> m = {{"ala", 1}, {"ola", 2}};
+
+// C++11/17 — niewygodne
+if (m.find("ala") != m.end()) { /* ... */ }
+if (m.count("ala") > 0)       { /* ... */ }
+
+// C++20 — czytelne i jednoznaczne
+if (m.contains("ala")) { /* ... */ }
+```
+***
+
 ##### Uzupełnienie (C++20): kontenery i algorytmy constexpr
 
 C++20 pozwala używać wielu kontenerów i algorytmów w kontekście `constexpr`, np.:
@@ -4704,9 +4726,9 @@ typ, który **może, ale nie musi** zawierać wartość:
 
 std::optional<int> znajdz(const std::vector<int>& v, int x)
 {
-    for (int i = 0; i < v.size(); ++i)
-        if (v[i] == x) return i;    // zwraca wartość
-    return std::nullopt;             // zwraca brak wartości
+    for (std::size_t i = 0; i < v.size(); ++i)
+        if (v[i] == x) return static_cast<int>(i);     // zwraca wartość
+    return std::nullopt;                                 // zwraca brak wartości
 }
 
 auto wynik = znajdz({1, 2, 3}, 2);
@@ -5910,11 +5932,6 @@ C++20 wprowadza drobne rozszerzenia w obszarze wielowątkowości:
   mutexa i zmiennej warunkowej — prostszy i wydajniejszy alternatywny
   wzorzec dla prostych przypadków synchronizacji.
 
-* **Dodano **`std::jthread`** oraz mechanizm zatrzymywania wątków
-(**`std::stop_token`**, **`std::stop_source`**)**. `std::jthread` automatycznie
-dołącza się w destruktorze i umożliwia bezpieczne anulowanie pracy wątku
-poprzez `stop_token`, co znacząco upraszcza zarządzanie cyklem życia wątków.
-
 ***
 
 ### Typy krotek (Tuple types)
@@ -6064,32 +6081,9 @@ Ta funkcja nie wymagała rozszerzeń rdzenia języka — jedynie niewielkiego ro
 
 #### Uzupełnienie (C++17/20/23)
 
-* **C++17** — dodano `try_emplace`, `insert_or_assign` w mapach.  
-* **C++20** — poprawiono wydajność hashowania i dodano `contains()`.  
+* **C++17** — dodano `try_emplace`, `insert_or_assign` w mapach.
 * **C++23** — rozszerzono API o nowe operacje i poprawiono integrację z `std::expected`.
 
-***
-
-### Uzupełnienie (C++20): `contains()` dla kontenerów asocjacyjnych
-
-C++20 dodaje metodę `contains()` do **wszystkich kontenerów asocjacyjnych**:
-
-* `std::map`
-* `std::unordered_map`
-* `std::set`
-* `std::unordered_set`
-
-Przed C++20 sprawdzenie, czy klucz istnieje, wymagało użycia `find()` lub `count()`:
-```cpp
-std::map<std::string, int> m = {{"ala", 1}, {"ola", 2}};
-
-// C++11/17 — niewygodne
-if (m.find("ala") != m.end()) { /* ... */ }
-if (m.count("ala") > 0)       { /* ... */ }
-
-// C++20 — czytelne i jednoznaczne
-if (m.contains("ala")) { /* ... */ }
-```
 ***
 
 ### std::array i std::forward_list
@@ -6320,13 +6314,18 @@ Przydatne przy pisaniu generycznego kodu operującego na wskaźnikach:
 #include <memory>
 
 auto up = std::make_unique<int>(42);
-int* raw = std::to_address(up);         // działa dla unique_ptr
-
-int tab[] = {1, 2, 3};
-int* ptr = std::to_address(tab);        // działa dla tablic
+int* raw = std::to_address(up);         // unique_ptr → surowy wskaźnik
 
 std::vector<int> v = {1, 2, 3};
-int* vptr = std::to_address(v.begin()); // działa dla iteratorów ciągłych
+int* vptr = std::to_address(v.begin()); // iterator ciągły → surowy wskaźnik
+
+// Przydatność: generyczny kod działający dla obu bez .get() vs &*it
+template <typename Ptr>
+void funkcjaC(Ptr p)
+{
+    int* raw = std::to_address(p);      // działa dla unique_ptr i iteratora
+    // ...
+}
 ```
 
 Przed C++20 uzyskanie surowego wskaźnika z różnych typów wymagało różnych metod
