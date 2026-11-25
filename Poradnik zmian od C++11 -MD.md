@@ -285,6 +285,28 @@ Umożliwia tworzenie funkcji fabrycznych i konstruktorów pomocniczych, które w
 * **`std::move`** to narzędzie do konwersji nazwanej zmiennej na rvalue; samo w sobie nie przenosi zasobów.
 * **Perfect forwarding** (w połączeniu z szablonami wariadycznymi) pozwala pisać ogólne funkcje, które przekazują argumenty dalej bez strat wydajnościowych.
 
+##### Uzupełnienie (C++23): uproszczone niejawne przenoszenie przy `return`
+
+Już od C++11 kompilator, widząc `return nazwa;` dla zmiennej lokalnej lub parametru funkcji,
+najpierw próbuje potraktować ją jak r-wartość — czyli **przenieść**, a nie skopiować.
+Dlatego **nie należy** pisać `return std::move(nazwa);` — to zwykle wyłącza pominięcie kopiowania
+(copy elision) i pogarsza wydajność.
+
+Reguła ta miała jednak wyjątki. Do C++20 nie działała dla parametru będącego referencją
+do r-wartości, bo jego nazwa jest l-wartością, a typ zwracany był referencją:
+```cpp
+std::string&& przekaz(std::string&& s)
+{
+    return s;   // C++20: błąd kompilacji (s jest l-wartością, nie da się związać z std::string&&)
+                // C++23: poprawne — s jest traktowane jako r-wartość w instrukcji return
+}
+```
+
+C++23 upraszcza i ujednolica reguły: nazwa zwracanej zmiennej lokalnej lub parametru jest
+niejawnie traktowana jako r-wartość bez względu na to, czy typ zwracany jest wartością, czy referencją.
+W praktyce oznacza to, że **pisanie `std::move` w instrukcji `return` pozostaje zbędne** — i teraz
+dotyczy to większej liczby przypadków.
+
 ***
 
 #### `constexpr` – uogólnione wyrażenia stałe
@@ -395,6 +417,39 @@ struct Kolo : Figura
   pod warunkiem, że pamięć zostanie zwolniona przed końcem obliczenia
   (brak trwałej alokacji constexpr).
 
+###### Uzupełnienie (C++23): dalsze luzowanie ograniczeń `constexpr`
+
+C++23 znosi kolejne ograniczenia funkcji `constexpr`:
+
+* **Zmienne nieliteralnych typów, etykiety i `goto`** — mogą pojawić się w funkcji `constexpr`,
+  o ile nie zostaną wykonane podczas obliczania w czasie kompilacji. Wcześniej samo ich
+  istnienie w ciele funkcji uniemożliwiało oznaczenie jej jako `constexpr`.
+
+* **Zmienne `static constexpr`** — dozwolone w ciele funkcji `constexpr`:
+```cpp
+constexpr int nazwaMiesiaca(int numer)
+{
+    static constexpr int tablica[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    return tablica[numer];   // C++23: poprawne; wcześniej static w funkcji constexpr był zabroniony
+}
+```
+
+* **Funkcja `constexpr` nie musi mieć żadnego wywołania stałego** — do C++20 program był
+  źle sformowany (bez wymaganej diagnostyki), jeśli dla funkcji `constexpr` nie istniał
+  żaden zestaw argumentów dający wyrażenie stałe. C++23 znosi tę regułę, więc `constexpr`
+  można dodać także do funkcji, która w praktyce (np. na niektórych platformach) nigdy
+  nie da się obliczyć w czasie kompilacji.
+
+* **Referencje „nieznanego pochodzenia”** — referencja będąca parametrem funkcji
+  może być użyta w wyrażeniu stałym, jeśli sama operacja nie zależy od wartości obiektu:
+```cpp
+void f(const std::array<int, 3>& tablica)
+{
+    constexpr auto rozmiar = tablica.size();   // C++20: błąd (tablica to referencja nieznanego pochodzenia)
+                                               // C++23: poprawne — rozmiar zależy tylko od typu
+}
+```
+
 ***
 
 ##### Różnica między `constexpr` i `consteval` oraz `constinit`
@@ -449,6 +504,90 @@ licznik_globalny = 5; // dozwolone — constinit nie oznacza const
 - Wywołanie `consteval` poza kontekstem kompilacyjnym generuje błąd kompilacji.  
 - Wywołanie `constexpr` z argumentami, które nie dają wyrażenia stałego, nie jest błędem — po prostu wynik nie będzie wyrażeniem stałym i obliczenie nastąpi w runtime.  
 - `constinit` spowoduje błąd, jeśli inicjalizacja nie jest statyczna (tj. nie może być wykonana w fazie inicjalizacji statycznej).
+
+***
+
+##### (C++23): `if consteval`
+
+C++20 dodało funkcję `std::is_constant_evaluated()`, która pozwala sprawdzić, czy kod jest właśnie
+wykonywany w czasie kompilacji. Miała ona jednak pułapki:
+
+* `if constexpr (std::is_constant_evaluated())` jest **zawsze prawdziwe** (warunek `if constexpr`
+  sam jest wyrażeniem stałym), więc taki zapis jest błędem logicznym,
+* w zwykłej gałęzi `if (std::is_constant_evaluated())` nie można wywołać funkcji `consteval`.
+
+C++23 wprowadza dla tego celu osobną instrukcję: **`if consteval`**.
+```cpp
+int licznikWywolan = 0;   // zwykła zmienna globalna
+
+constexpr int kwadrat(int x)
+{
+    if consteval
+    {
+        // Ta gałąź wykonuje się TYLKO podczas obliczania w czasie kompilacji.
+        return x * x;
+    }
+    else
+    {
+        // Ta gałąź wykonuje się w czasie działania programu.
+        // Tutaj wolno użyć kodu, który nie jest stały (np. zmiennej globalnej).
+        ++licznikWywolan;
+        return x * x;
+    }
+}
+
+constexpr int a = kwadrat(5);   // czas kompilacji — gałąź if consteval
+int b = kwadrat(licznikWywolan);   // argument nie jest stałą — czas działania, gałąź else
+```
+
+Zasady:
+
+* **klamry są obowiązkowe** — zarówno po `if consteval`, jak i po `else`,
+* gałąź `else` jest opcjonalna,
+* istnieje też forma zaprzeczona `if !consteval { ... }` (wykonuje się w czasie działania programu),
+* w gałęzi `if consteval` wolno wywoływać funkcje `consteval`:
+```cpp
+consteval int tylkoWKompilacji(int x)
+{
+    return x + 1;
+}
+
+constexpr int f(int x)
+{
+    if consteval
+    {
+        return tylkoWKompilacji(x);   // poprawne: tu każde wywołanie jest wykonywane w czasie kompilacji
+    }
+    else
+    {
+        return x + 1;
+    }
+}
+```
+
+###### Propagacja `consteval` w górę (immediate-escalating functions)
+
+Jeśli funkcja `constexpr` (w tym szablon funkcji lub lambda) wywołuje funkcję `consteval`
+z argumentem, który nie jest stałą w miejscu definicji, od C++23 taka funkcja staje się
+**niejawnie `consteval`**, zamiast powodować błąd kompilacji:
+```cpp
+consteval int podwoj(int x)
+{
+    return 2 * x;
+}
+
+template <typename T>
+constexpr int f(T t)
+{
+    return podwoj(t);   // t nie jest stałą -> f staje się niejawnie consteval
+}
+
+constexpr int wynik = f(21);   // poprawne: f(21) jest obliczane w czasie kompilacji
+// int n = 5;
+// f(n);                       // błąd: f jest teraz consteval, a n nie jest stałą
+```
+Dzięki temu szablony ogólnego przeznaczenia mogą wywoływać funkcje `consteval` bez ręcznego
+dopisywania `consteval` wszędzie w górę łańcucha wywołań.
 
 ***
 
@@ -687,6 +826,31 @@ private:
 // Wszystkie specjalne funkcje są trywialne, ale różne poziomy dostępu pól
 // łamią zasady standard-layout.
 ```
+
+##### Uzupełnienie (C++23): kolejność niestatycznych pól w pamięci
+
+Do C++20 standard gwarantował rosnące adresy pól tej samej klasy tylko wtedy,
+gdy miały **ten sam poziom dostępu** (`public`, `protected`, `private`). Kolejność pól
+o różnych poziomach dostępu była nieokreślona.
+
+C++23 usuwa to wyjątek: niestatyczne pola klasy (nie unii) są układane w pamięci
+**zgodnie z kolejnością deklaracji**, niezależnie od poziomu dostępu:
+```cpp
+struct Mieszana
+{
+public:
+    int a;
+private:
+    int b;
+public:
+    int c;
+};
+// C++11–C++20: układ pól a, b, c przy różnych poziomach dostępu nie był gwarantowany.
+// C++23: adresy rosną zgodnie z kolejnością deklaracji: &a < &b < &c.
+```
+W praktyce wszystkie popularne kompilatory układały pola w ten sposób już wcześniej,
+więc zmiana głównie porządkuje standard. Nie zmienia ona definicji typu _standard-layout_
+(typ z polami o różnych poziomach dostępu nadal nim nie jest).
 
 ***
 
@@ -983,6 +1147,27 @@ auto c{1, 2};        // błąd kompilacji — niedozwolone od C++17
 
 Czyli `auto x{val}` od C++17 deduuje typ bezpośrednio jak `val`, a nie jako listę jednoelementową.
 
+###### Uzupełnienie (C++23): `auto(x)` i `auto{x}` — jawna kopia (decay-copy)
+
+C++23 pozwala zapisać `auto(x)` lub `auto{x}` jako **wyrażenie tworzące kopię** wartości `x`
+(typ wynikowy jest taki, jak dla `auto`, czyli bez referencji i bez `const`; tablice i funkcje
+zamieniają się na wskaźniki). Wynik jest wartością tymczasową (prvalue).
+
+Najczęstsze zastosowanie: przekazanie do funkcji **kopii** elementu, który ta funkcja może zmienić
+albo usunąć:
+```cpp
+std::vector<int> v = { 1, 2, 1, 3 };
+
+// Błąd logiczny: v.front() zwraca referencję do elementu wewnątrz v.
+// Podczas usuwania element ten zostaje nadpisany, więc porównujemy z już zmienioną wartością.
+std::erase(v, v.front());
+
+// Poprawnie: auto(...) tworzy kopię wartości, zanim algorytm zacznie usuwać elementy.
+std::erase(v, auto(v.front()));
+```
+Wcześniej trzeba było pisać zdecydowanie dłuższe `static_cast<std::decay_t<decltype(v.front())>>(v.front())`
+albo tworzyć osobną zmienną pomocniczą.
+
 ***
 
 ##### `decltype`
@@ -1214,6 +1399,32 @@ Zmienna zadeklarowana w inicjalizatorze żyje przez cały czas trwania pętli
 i nie jest widoczna poza nią. Przydatne gdy chcemy uniknąć tworzenia zmiennej
 pomocniczej w zewnętrznym zakresie.
 
+##### Uzupełnienie (C++23): czas życia obiektów tymczasowych w pętli po zakresie
+
+Przed C++23 pętla po zakresie miała znaną pułapkę: tymczasowe obiekty powstałe
+w wyrażeniu zakresu były niszczone **przed rozpoczęciem pętli**, jeśli nie były bezpośrednio
+związane z referencją:
+```cpp
+struct Pudelko
+{
+    std::vector<int> dane;
+
+    const std::vector<int>& pobierz() const
+    {
+        return dane;
+    }
+};
+
+Pudelko stworz();
+
+for (int x : stworz().pobierz())   // C++20: niezdefiniowane zachowanie
+{                                  // (tymczasowy Pudelko zniszczony, a pętla działa na zwisającej referencji)
+    std::cout << x << "\n";        // C++23: poprawne
+}
+```
+C++23 (P2718R0) przedłuża życie **wszystkich** obiektów tymczasowych z wyrażenia zakresu
+do końca pętli. Ten sam kod, który wcześniej był błędem trudnym do wykrycia, teraz działa poprawnie.
+
 ***
 
 #### Funkcje lambda
@@ -1300,7 +1511,7 @@ C++14 wprowadza **wyrażenia przechwytywania**, które pozwalają inicjalizować
 
 Przykład prostego przechwytywania z inicjalizatorem:
 ```cpp
-auto lambda = [wartosc = 1] -> int
+auto lambda = [wartosc = 1]() -> int
 {
     return wartosc;
 };
@@ -1315,7 +1526,7 @@ using std::unique_ptr;
 
 unique_ptr<int> wskaznik(new int(10));
 
-auto lambda = [wartosc = std::move(wskaznik)] -> int
+auto lambda = [wartosc = std::move(wskaznik)]() -> int
 {
     return *wartosc;
 };
@@ -1386,6 +1597,41 @@ struct Zadanie
     }
 };
 ```
+
+##### Uzupełnienie (C++23): drobne zmiany w lambdach
+
+C++23 wprowadza kilka drobnych udogodnień:
+
+* **Nawiasy `()` są opcjonalne**, gdy lambda nie ma parametrów — także wtedy, gdy występują
+  `mutable`, `constexpr`, `noexcept` lub typ zwracany:
+```cpp
+auto a = [] { return 1; };                  // to było dozwolone już wcześniej
+auto b = [licznik = 0] mutable { return ++licznik; };   // C++23: bez ()
+auto c = [] -> int { return 42; };          // C++23: bez ()
+```
+
+* **Atrybuty na operatorze wywołania** — atrybut zapisany przed listą parametrów dotyczy
+  samego `operator()`, a nie jego typu:
+```cpp
+auto d = [] [[nodiscard]] () { return 1; };   // wynik wywołania d() nie powinien być ignorowany
+```
+
+* **Lambdy `static`** — lambda bez przechwyceń może mieć statyczny `operator()`,
+  co ułatwia jej przekazywanie jako zwykłej funkcji bez dodatkowego wskaźnika `this`:
+```cpp
+auto e = [](int x) static { return x * 2; };
+```
+
+* **Widoczność przechwyceń w typie zwracanym** — przechwycone nazwy są widoczne
+  w typie zwracanym po `->`:
+```cpp
+double x = 1.0;
+auto f = [x = 1]() -> decltype(x) { return x; };
+// C++23: decltype(x) odnosi się do przechwyconego x (typ int).
+// Wcześniej: decltype(x) odnosiło się do zewnętrznego x (typ double).
+```
+Ostatnia zmiana jest rzadko zauważalna w praktyce, ale warto o niej wiedzieć przy bardziej
+złożonych typach zwracanych.
 
 ***
 
@@ -1998,6 +2244,25 @@ switch (k)
 
 `using enum` działa zarówno dla `enum class`, jak i zwykłych `enum`.
 
+##### Uzupełnienie (C++23): `std::to_underlying`
+
+Do konwersji elementu wyliczenia na jego typ bazowy trzeba było pisać
+`static_cast<std::underlying_type_t<Kolor>>(...)`. C++23 dodaje funkcję `std::to_underlying`
+z nagłówka `<utility>`:
+```cpp
+enum class Kolor : std::uint8_t
+{
+    Czerwony = 1,
+    Zielony  = 2
+};
+
+auto liczba = std::to_underlying(Kolor::Zielony);   // typ std::uint8_t, wartość 2
+// Zamiast: static_cast<std::underlying_type_t<Kolor>>(Kolor::Zielony)
+```
+Funkcja jest bezpieczniejsza — nie zmieni po cichu wyniku, jeśli ktoś później zmieni typ bazowy
+wyliczenia. W nagłówku `<type_traits>` pojawiła się też cecha `std::is_scoped_enum_v<T>`,
+która jest prawdziwa dla wyliczeń z zakresem (`enum class`) i fałszywa dla zwykłych `enum`.
+
 ***
 
 #### Podwójny nawias ostry
@@ -2558,6 +2823,21 @@ switch (auto status = pobierzStatus(); status)
 Główna zaleta: ograniczenie zasięgu zmiennych pomocniczych do bloku,
 w którym są potrzebne, bez konieczności tworzenia sztucznych zakresów przez `{}`.
 
+##### Uzupełnienie (C++23): deklaracja aliasu w instrukcji inicjalizującej
+
+Od C++23 w instrukcji inicjalizującej (pierwsza część `for`, `if`, `switch` i pętli po zakresie)
+można umieścić **deklarację aliasu** (`using`):
+```cpp
+std::vector<std::pair<int, std::string>> lista = { {1, "jeden"}, {2, "dwa"} };
+
+// Alias Wpis istnieje tylko w obrębie tej pętli.
+for (using Wpis = std::pair<int, std::string>; const Wpis& w : lista)
+{
+    std::cout << w.first << " " << w.second << "\n";
+}
+```
+Dotyczy to wyłącznie zapisu `using`, a nie starszego `typedef`.
+
 ***
 
 #### (C++17): `typename` w parametrach szablonu szablonu
@@ -2647,6 +2927,27 @@ Vec v{1, 2, 3};   // C++20: dedukuje Vec<int> → std::vector<int>
 ```
 
 Dzięki temu CTAD obejmuje więcej konstrukcji języka i eliminuje kolejne przypadki, w których wcześniej trzeba było podawać typy jawnie.
+
+##### Uzupełnienie (C++23): CTAD z dziedziczonych konstruktorów
+
+C++23 pozwala, aby konstruktory **odziedziczone** przez `using` brały udział w dedukcji
+argumentów szablonu klasy:
+```cpp
+template <typename T>
+struct Pudelko
+{
+    Pudelko(T wartosc) { /* ... */ }
+};
+
+template <typename T>
+struct Pochodna : Pudelko<T>
+{
+    using Pudelko<T>::Pudelko;   // dziedziczymy konstruktor
+};
+
+Pochodna p(42);   // C++23: dedukcja daje Pochodna<int>
+                  // C++20: błąd — odziedziczone konstruktory nie uczestniczyły w CTAD
+```
 
 ***
 
@@ -2876,7 +3177,6 @@ std::integral<T>          // typ całkowity (int, long, char...)
 std::floating_point<T>    // typ zmiennoprzecinkowy
 std::signed_integral<T>   // całkowity ze znakiem
 std::unsigned_integral<T> // całkowity bez znaku
-std::arithmetic<T>        // całkowity lub zmiennoprzecinkowy
 ```
 
 **Koncepty relacji między typami:**
@@ -2920,6 +3220,9 @@ concept Kontener = requires(T c)
 
     // Wymaganie noexcept: wyrażenie musi być noexcept
     { c.empty() } noexcept -> std::convertible_to<bool>;
+
+    // Wymaganie zagnieżdżone: dodatkowy warunek, który też musi być spełniony
+    requires std::is_default_constructible_v<T>;
 };
 ```
 
@@ -3081,6 +3384,26 @@ import "moj.h";     // importuje lokalny nagłówek jako moduł
 > Pełne wsparcie narzędzi budowania (CMake, Make) pojawiło się stopniowo
 > po 2022 roku. W nowych projektach warto już używać modułów,
 > ale migracja istniejących dużych projektów wymaga czasu.
+
+##### Uzupełnienie (C++23): moduły standardowe `std` i `std.compat`
+
+C++23 udostępnia całą bibliotekę standardową jako gotowe moduły:
+
+* `import std;` — wszystkie nazwy z przestrzeni nazw `std` (także z nagłówków pochodzących z C, np. `std::printf`),
+* `import std.compat;` — to samo, a dodatkowo nazwy z biblioteki C w przestrzeni globalnej (np. `::printf`, `::size_t`).
+```cpp
+import std;   // zamiast dziesiątek dyrektyw #include
+
+int main()
+{
+    std::cout << "Witaj, świecie!\n";
+}
+```
+Moduł jest zwykle znacznie szybszy do przetworzenia niż pojedyncze nagłówki. Należy pamiętać, że:
+
+* **makra nie są eksportowane** — np. `assert` lub `errno` nadal wymagają `#include <cassert>` / `#include <cerrno>`,
+* wsparcie zależy od kompilatora, biblioteki standardowej i systemu budowania — w wielu środowiskach
+  trzeba je najpierw jawnie włączyć w konfiguracji projektu.
 
 ***
 
@@ -3327,6 +3650,178 @@ struct NapisCI // porównanie case-insensitive
 
 > **Uwaga:** `operator<=>` z `= default` generuje też `operator==` z `= default`.
 > Jeśli definiujesz `<=>` ręcznie, musisz też zdefiniować `==` osobno — kompilator go nie wygeneruje.
+
+##### Uzupełnienie (C++23): łagodniejsze przepisywanie operatora `==`
+
+W C++20 kompilator potrafi automatycznie przepisać wyrażenie `a == b` na wersję odwróconą
+`b == a` oraz wygenerować `!=` na podstawie `==`. W klasach, które miały własne, ręcznie napisane
+pary `operator==` i `operator!=` (np. z czasów C++17), mogło to prowadzić do niejednoznaczności
+lub zaskakującego wyboru przeciążenia.
+
+C++23 doprecyzowuje regułę: jeśli dla danego `operator==` zadeklarowano **pasujący `operator!=`**,
+kompilator **nie używa** tego `==` do przepisywania. Dzięki temu kod napisany dla C++17,
+który definiuje oba operatory ręcznie, zachowuje się w C++23 tak samo jak wcześniej,
+a nowe klasy nadal mogą korzystać z automatycznego generowania.
+
+***
+
+#### (C++23): Jawny parametr obiektu (deducing this)
+
+Do C++20 funkcja składowa miała **ukryty** parametr `this`. Jeśli chcieliśmy,
+aby ta sama funkcja działała inaczej dla obiektu `const`, nie-`const`, l-wartości i r-wartości,
+trzeba było pisać nawet cztery prawie identyczne przeciążenia.
+
+C++23 pozwala zadeklarować ten parametr **jawnie**, jako pierwszy parametr oznaczony słowem `this`:
+```cpp
+#include <utility>   // std::forward_like
+#include <vector>
+
+struct Kolekcja
+{
+    std::vector<int> dane;
+
+    // Jedna definicja zamiast czterech wersji (const / nie-const x l-wartość / r-wartość).
+    // Self jest dedukowane jak w zwykłym szablonie funkcji.
+    template <typename Self>
+    auto&& at(this Self&& self, std::size_t indeks)
+    {
+        // forward_like przekazuje element z taką samą "const-owością"
+        // i kategorią wartości, jak obiekt self.
+        return std::forward_like<Self>(self.dane[indeks]);
+    }
+};
+
+Kolekcja k{ {1, 2, 3} };
+const Kolekcja kc{ {4, 5, 6} };
+
+k.at(0) = 10;          // zwraca int&
+int x = kc.at(0);      // zwraca const int&
+int y = Kolekcja{ {7, 8} }.at(1);   // zwraca int&& (obiekt tymczasowy)
+```
+
+###### Rekurencyjne lambdy
+
+Jawny parametr obiektu pozwala lambdzie odwołać się do samej siebie bez `std::function`:
+```cpp
+auto silnia = [](this auto&& self, int n) -> int
+{
+    return n <= 1 ? 1 : n * self(n - 1);   // self to ta sama lambda
+};
+
+int wynik = silnia(5);   // 120
+```
+
+###### Zastępstwo dla CRTP
+
+Wzorzec CRTP (Curiously Recurring Template Pattern) służył do wywoływania metod klasy
+pochodnej z klasy bazowej bez funkcji wirtualnych. Wymagał szablonu klasy i `static_cast`:
+```cpp
+// Klasyczne CRTP (C++03–C++20)
+template <typename Pochodna>
+struct BazaCRTP
+{
+    void wypisz()
+    {
+        static_cast<Pochodna*>(this)->wypiszSzczegoly();
+    }
+};
+
+struct A : BazaCRTP<A>
+{
+    void wypiszSzczegoly() { std::cout << "A\n"; }
+};
+
+// C++23: klasa bazowa nie musi być szablonem
+struct Baza
+{
+    void wypisz(this auto&& self)
+    {
+        self.wypiszSzczegoly();   // self ma typ klasy pochodnej
+    }
+};
+
+struct B : Baza
+{
+    void wypiszSzczegoly() { std::cout << "B\n"; }
+};
+```
+
+###### Zasady i ograniczenia
+
+* parametr z `this` musi być **pierwszym** parametrem funkcji,
+* funkcja z jawnym parametrem obiektu **nie może być** `static`, `virtual`
+  ani mieć kwalifikatorów `const`/`volatile`/`&`/`&&` po liście parametrów
+  (te informacje wynikają z typu parametru `self`),
+* wewnątrz takiej funkcji **nie wolno** używać słowa `this` — zamiast niego używa się nazwy parametru,
+* parametr może być też zwykłą wartością: `void f(this Kolekcja self)` — wtedy obiekt jest kopiowany,
+* wskaźnik do takiej funkcji składowej (`&Klasa::funkcja`) jest zwykłym wskaźnikiem do funkcji
+  z jawnym pierwszym parametrem.
+
+###### `std::forward_like`
+
+`std::forward_like<T>(x)` (nagłówek `<utility>`) zwraca `x` z takim samym `const` i taką samą kategorią
+wartości (l-wartość/r-wartość), jaką ma typ `T`. Jest to uogólnienie `std::forward`
+dla sytuacji, gdy przekazujemy **pole obiektu**, a nie sam obiekt — jak w przykładzie z `Kolekcja::at`.
+
+***
+
+#### (C++23): Wielowymiarowy `operator[]`
+
+W C++20 `operator[]` mógł przyjmować tylko **jeden** argument, a zapis `m[1, 2]` oznaczał użycie
+operatora przecinka (i był przestarzały). Dla macierzy trzeba było pisać `m(1, 2)` albo `m[1][2]`
+(co wymagało pośredniego obiektu wiersza).
+
+C++23 pozwala, aby `operator[]` przyjmował **dowolną liczbę argumentów**:
+```cpp
+class Macierz
+{
+public:
+    Macierz(std::size_t wiersze, std::size_t kolumny)
+        : dane_(wiersze * kolumny), kolumny_(kolumny)
+    {
+    }
+
+    // operator[] z dwoma argumentami
+    double& operator[](std::size_t wiersz, std::size_t kolumna)
+    {
+        return dane_[wiersz * kolumny_ + kolumna];
+    }
+
+    const double& operator[](std::size_t wiersz, std::size_t kolumna) const
+    {
+        return dane_[wiersz * kolumny_ + kolumna];
+    }
+
+private:
+    std::vector<double> dane_;
+    std::size_t kolumny_;
+};
+
+Macierz m(3, 4);
+m[1, 2] = 5.0;                 // C++23: dwa argumenty
+std::cout << m[1, 2] << "\n";  // 5
+```
+Jeśli w nawiasach kwadratowych potrzebny jest dawny operator przecinka, trzeba użyć dodatkowych
+nawiasów: `a[(b, c)]`. Wielowymiarowy `operator[]` jest podstawą dla `std::mdspan` (C++23).
+
+##### Uzupełnienie (C++23): `static operator()` i `static operator[]`
+
+Operator wywołania i operator indeksowania mogą być **statyczne**:
+```cpp
+struct Kwadrat
+{
+    // Brak ukrytego parametru this — operator nie potrzebuje obiektu.
+    static int operator()(int x)
+    {
+        return x * x;
+    }
+};
+
+int wynik = Kwadrat{}(5);   // 25
+```
+Taki obiekt funkcyjny bez stanu jest tańszy w wywołaniu (nie przekazuje wskaźnika `this`)
+i łatwiej go zoptymalizować. Podobnie jak w przypadku lambd `static` (patrz wyżej), jest to użyteczne
+przy obiektach funkcyjnych przekazywanych do algorytmów.
 
 ***
 
@@ -3626,6 +4121,38 @@ u8R"XXX(Jestem „surowym UTF-8” napisem.)XXX"
 uR"*(To jest „surowy UTF-16” napis.)*"
 UR"(To jest „surowy UTF-32” napis.)"
 ```
+***
+
+##### (C++23): sekwencje ucieczki i kodowanie znaków
+
+C++23 porządkuje zapis znaków specjalnych w literałach oraz kodowanie plików źródłowych.
+
+**Sekwencje z klamrami (delimited escape sequences).** Dotychczasowe `\x41` było „chciwe” —
+pochłaniało wszystkie kolejne cyfry szesnastkowe, więc `"\x41bc"` oznaczało jeden znak o kodzie `0x41bc`.
+Nowa składnia z klamrami jasno wyznacza koniec liczby:
+```cpp
+const char* a = "\x{41}bc";           // 'A', a po nim zwykłe 'b' i 'c'
+const char* b = "\o{101}";            // 'A' zapisane ósemkowo
+const char32_t* c = U"\u{1F600}";     // znak Unicode o kodzie 0x1F600 (emotikona)
+```
+
+**Znaki Unicode po nazwie (`\N{...}`).** Znak można wskazać oficjalną nazwą z Unicode:
+```cpp
+const char8_t* d = u8"\N{LATIN SMALL LETTER A WITH OGONEK}";   // „ą”
+```
+
+**Pozostałe zmiany:**
+
+* **UTF-8 jako kodowanie plików źródłowych** — implementacje muszą obsługiwać UTF-8
+  jako przenośne kodowanie kodu źródłowego, a zbiór znaków źródła jest oparty na Unicode,
+  więc znaki spoza ASCII w literałach i komentarzach mają jednoznaczne znaczenie
+  (kompilatory nadal mogą wymagać odpowiedniej opcji, np. `/utf-8` w MSVC),
+* **identyfikatory według UAX #31** — nazwy zmiennych i funkcji mogą zawierać litery
+  z różnych alfabetów według reguł Unicode (`XID_Start` / `XID_Continue`), np. polskie znaki w nazwach,
+* **tablica `char` z literału `u8`** — poprawne jest `char napis[] = u8"ala";`
+  (od C++20 `u8"..."` ma typ `const char8_t[]`, co wcześniej utrudniało takie przypisanie),
+* **`wchar_t`** — wymagania wobec tego typu dopasowano do praktyki kompilatorów.
+
 ***
 
 #### Literały definiowane przez użytkownika (user‑defined literals)
@@ -3990,6 +4517,53 @@ Mechanizm ten ułatwia szybkie rozpoznawanie dużych liczb przez człowieka (tzw
 
 ***
 
+#### Uzupełnienie (C++23): sufiksy `z` i `uz` dla literałów całkowitych
+
+Zapis `auto i = 0;` daje `int`, a `v.size()` zwraca `std::size_t` (bez znaku),
+co powodowało ostrzeżenia o porównaniu liczb ze znakiem i bez znaku.
+C++23 dodaje sufiksy:
+
+* `uz` / `UZ` — literał typu `std::size_t`,
+* `z` / `Z` — literał typu ze znakiem odpowiadającego `std::size_t` (`std::make_signed_t<std::size_t>`).
+```cpp
+std::vector<int> v = { 1, 2, 3 };
+
+for (auto i = 0uz; i < v.size(); ++i)   // i ma typ std::size_t — brak ostrzeżenia
+{
+    std::cout << v[i] << "\n";
+}
+
+auto roznica = 5z - 8z;   // wynik -3 (typ ze znakiem)
+```
+Sufiksy można łączyć w dowolnej kolejności (`uz`, `zu`, `UZ`, `ZU`).
+
+***
+
+#### Uzupełnienie (C++23): rozszerzone typy zmiennoprzecinkowe (`<stdfloat>`)
+
+Nagłówek `<stdfloat>` definiuje typy zmiennoprzecinkowe o **ściśle określonej** szerokości
+(zgodne z IEEE 754 oraz formatem `bfloat16` stosowanym w uczeniu maszynowym):
+
+| Typ | Rozmiar | Sufiks literału |
+|---|---|---|
+| `std::float16_t` | 16 bitów | `f16` |
+| `std::float32_t` | 32 bity | `f32` |
+| `std::float64_t` | 64 bity | `f64` |
+| `std::float128_t` | 128 bitów | `f128` |
+| `std::bfloat16_t` | 16 bitów (inny rozkład bitów) | `bf16` |
+```cpp
+#include <stdfloat>
+
+std::float32_t a = 1.5f32;
+std::float64_t b = 2.5f64;
+```
+Wszystkie te typy są **opcjonalne** — implementacja może ich nie dostarczać.
+Dostępność można sprawdzić makrami `__STDCPP_FLOAT16_T__`, `__STDCPP_FLOAT32_T__`,
+`__STDCPP_FLOAT64_T__`, `__STDCPP_FLOAT128_T__` i `__STDCPP_BFLOAT16_T__`.
+Typ `std::float32_t` nie musi być tym samym typem co `float` (choć często jest tak reprezentowany).
+
+***
+
 #### Asercje statyczne (static assertions)
 
 W C++03 istniały dwie metody testowania asercji:
@@ -4060,6 +4634,40 @@ C++20 pozwala używać `static_assert`:
 * w definicjach konceptów,
 * w kontekstach wymagających stałej ewaluacji.
 
+##### Uzupełnienie (C++23): `static_assert(false)` w szablonach i konwersje do `bool`
+
+**`static_assert(false)` w szablonach.** Do C++20 wpisanie `static_assert(false, "...")`
+w gałęzi szablonu powodowało błąd kompilacji **nawet bez instancjacji**, bo warunek nie zależał
+od parametru szablonu. Trzeba było stosować sztuczkę z pomocniczą zmienną zależną od `T`:
+```cpp
+template <typename T>
+inline constexpr bool zawszeFalsz = false;   // obejście w C++20
+```
+C++23 (wprowadzone jako poprawka także dla C++20) rozwiązuje ten problem — poniższy kod jest poprawny:
+```cpp
+template <typename T>
+void obsluz(const T& wartosc)
+{
+    if constexpr (std::is_integral_v<T>)
+    {
+        // obsługa liczb całkowitych
+    }
+    else
+    {
+        static_assert(false, "Nieobsługiwany typ");   // błąd tylko przy instancjacji dla złego typu
+    }
+}
+```
+
+**Konwersje do `bool` w `static_assert` i `if constexpr`.** Warunek jest teraz dopuszczony
+z konwersją zawężającą do `bool`:
+```cpp
+constexpr int flagi = 4;
+static_assert(flagi, "flagi muszą być niezerowe");   // C++23: poprawne
+                                                      // C++20: błąd (zawężająca konwersja int -> bool)
+```
+Pozwala to pisać `if constexpr (maska & flaga)` bez dodatkowego porównania `!= 0`.
+
 ***
 
 #### Pozwolenie na użycie `sizeof` dla składowych klas bez jawnego obiektu
@@ -4129,6 +4737,25 @@ Od C++20 `alignas` może być używany w obiektach `constexpr`, jeśli wyrównan
 
 ***
 
+##### Uzupełnienie (C++23): `std::aligned_storage` i `std::aligned_union` są przestarzałe
+
+Cechy `std::aligned_storage` i `std::aligned_union` służyły do tworzenia surowego bufora
+o określonym rozmiarze i wyrównaniu. C++23 oznacza je jako **przestarzałe** — ich zastępstwem jest
+zwykła tablica `std::byte` z `alignas`:
+```cpp
+// Stary sposób (przestarzały w C++23)
+std::aligned_storage_t<sizeof(T), alignof(T)> staryBufor;
+
+// Nowy sposób
+alignas(T) std::byte nowyBufor[sizeof(T)];
+```
+Dla `std::aligned_union` odpowiednikiem jest bufor `std::byte` o rozmiarze największego
+z typów oraz `alignas` dla każdego z nich.
+Powód zmiany: stare cechy miały znane wady (m.in. niewygodny interfejs oparty na `::type`
+i problemy z gwarancją wyrównania), a nowy zapis jest prostszy i czytelniejszy.
+
+***
+
 #### Pozwolenie na implementacje z automatycznym zbieraniem śmieci (Allow garbage collected implementations)
 
 W poprzednich standardach C++ przewidziano mechanizmy sterowane przez programistę (np. `set_new_handler`), ale **nie zdefiniowano pojęcia osiągalności obiektów** w kontekście automatycznego zbierania śmieci.
@@ -4141,6 +4768,20 @@ W takim przypadku wskaźniki, które nie są pochodne zgodnie z tymi regułami, 
 > **Nota:**
 > Standard **nie wymusza** implementacji garbage collectora,
 > ale pozwala implementacjom, które go oferują, działać w sposób zgodny ze standardem.
+
+##### Uzupełnienie (C++23): usunięcie wsparcia dla garbage collectora
+
+C++23 **usuwa** z języka opisane wyżej mechanizmy przygotowane pod garbage collector,
+ponieważ żadna znacząca implementacja ich nigdy nie wykorzystała. Usunięto m.in.:
+
+* pojęcie _strict pointer safety_ (wskaźników „bezpiecznie pochodnych”),
+* funkcje `std::declare_reachable`, `std::undeclare_reachable`,
+  `std::declare_no_pointers`, `std::undeclare_no_pointers`,
+* funkcję `std::get_pointer_safety` oraz typ `std::pointer_safety`.
+
+Program, który tych elementów nie używał (a tak jest w przytłaczającej większości przypadków),
+nie wymaga żadnych zmian. Zarządzanie pamięcią pozostaje zadaniem programisty
+i inteligentnych wskaźników.
 
 ***
 
@@ -4305,12 +4946,59 @@ z niestandardowymi alokatorami i komparatorami.
 
 ##### Uzupełnienie (C++23): atrybut `[[assume]]`
 
-C++23 wprowadza:
+C++23 wprowadza atrybut, który pozwala **obiecać kompilatorowi**, że w danym miejscu
+pewien warunek jest prawdziwy:
 ```cpp
-[[assume(warunek)]]
+int podziel(int a, int b)
+{
+    [[assume(b != 0)]];   // obietnica: b nigdy nie jest zerem
+    return a / b;         // kompilator może pominąć sprawdzanie dzielenia przez zero
+}
 ```
 
-Informuje kompilator, że dany warunek **zawsze jest prawdziwy**, co może umożliwić dodatkowe optymalizacje.
+Ważne:
+
+* **to nie jest asercja** — warunek **nie jest sprawdzany** w czasie działania programu
+  i nie wolno na nim polegać jako na zabezpieczeniu,
+* jeśli warunek w rzeczywistości jest fałszywy, zachowanie programu jest **niezdefiniowane**,
+* wyrażenie z atrybutu nie jest wykonywane, więc nie powinno mieć skutków ubocznych
+  (a jeśli je ma, są ignorowane),
+* używaj go tylko tam, gdzie warunek jest prawdziwy z całą pewnością, a pomiar wykazał,
+  że optymalizacja jest potrzebna.
+
+Wcześniej ten sam efekt dawały rozszerzenia kompilatorów: `__builtin_assume` (Clang),
+`__assume` (MSVC).
+
+##### Uzupełnienie (C++23): `std::unreachable`
+
+Funkcja `std::unreachable()` z nagłówka `<utility>` oznacza miejsce, do którego
+**wykonanie nigdy nie powinno dojść**. Dojście do niej to niezdefiniowane zachowanie —
+ale dzięki temu kompilator może pominąć zbędne gałęzie:
+```cpp
+enum class Kierunek { Gora, Dol };
+
+int znak(Kierunek k)
+{
+    switch (k)
+    {
+        case Kierunek::Gora: return 1;
+        case Kierunek::Dol:  return -1;
+        default:
+            std::unreachable();   // wszystkie wartości wyliczenia są obsłużone wyżej
+    }
+}
+```
+Jest to standardowy odpowiednik `__builtin_unreachable()` (GCC/Clang) i `__assume(false)` (MSVC).
+
+##### Uzupełnienie (C++23): powtarzające się atrybuty
+
+W C++20 ten sam atrybut nie mógł wystąpić dwukrotnie w jednej liście atrybutów.
+C++23 to dopuszcza:
+```cpp
+[[nodiscard, nodiscard]] int f();   // C++23: poprawne; C++20: błąd
+```
+Przydaje się głównie w kodzie generowanym przez makra, gdy ten sam atrybut może zostać
+dodany z dwóch miejsc.
 
 ***
 
@@ -4727,7 +5415,7 @@ typ, który **może, ale nie musi** zawierać wartość:
 std::optional<int> znajdz(const std::vector<int>& v, int x)
 {
     for (std::size_t i = 0; i < v.size(); ++i)
-        if (v[i] == x) return static_cast<int>(i);     // zwraca wartość
+        if (v\[i] == x) return static_cast\<int>(i);     // zwraca wartość
     return std::nullopt;                                 // zwraca brak wartości
 }
 
@@ -6805,9 +7493,51 @@ Standard **C++11** wprowadził zestaw zmian mających na celu poprawę zgodnośc
 
 ***
 
-### C++14 / C++20 / C++23
+### C++23
 
-Brak zmian — żadna z późniejszych wersji standardu nie rozszerzała ani nie modyfikowała tej sekcji.
+C++23 przybliża preprocesor i składnię języka do standardu **C23**.
+
+#### Preprocesor
+
+* `#elifdef` i `#elifndef` — skrócone formy `#elif defined(...)` oraz `#elif !defined(...)`:
+```cpp
+#ifdef SYSTEM_LINUX
+    // kod dla Linuksa
+#elifdef SYSTEM_WINDOWS
+    // kod dla Windows (wcześniej: #elif defined(SYSTEM_WINDOWS))
+#else
+    // pozostałe systemy
+#endif
+```
+
+* `#warning` — dyrektywa wypisująca ostrzeżenie podczas kompilacji (do tej pory była rozszerzeniem
+  większości kompilatorów, a w C++23 jest częścią standardu):
+```cpp
+#warning "Ta funkcja będzie usunięta w następnej wersji"
+```
+
+#### Składnia
+
+* **Etykieta na końcu bloku** — etykieta może stać bezpośrednio przed klamrą zamykającą
+  blok, bez pustej instrukcji `;`:
+```cpp
+void f()
+{
+    // ...
+    koniec:   // C++23: poprawne; wcześniej wymagane było "koniec: ;"
+}
+```
+
+#### Nagłówki
+
+* `<stdatomic.h>` — nagłówek zgodny z C, a w nim makro `_Atomic(T)`, które w C++ oznacza `std::atomic<T>`.
+  Pozwala dzielić kod między C a C++ (nagłówki wspólne dla obu języków).
+
+***
+
+### C++14 / C++20
+
+Brak zmian — C++14 i C++20 nie rozszerzały ani nie modyfikowały tej sekcji.
 
 ***
 
@@ -6876,7 +7606,8 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
 
 * Większość zastosowań słowa kluczowego **`volatile`** została oznaczona
   jako **przestarzała**. Dotyczy to m.in.:
-  - złożonych wyrażeń z `volatile` (`v++`, `v += 1` — zamiast tego `v = v + 1`),
+  - złożonych wyrażeń z `volatile` (`v++`, `--v`; w C++20 także przypisania złożone,
+    np. `v += 1` — zamiast tego `v = v + 1`),
   - parametrów funkcji i typów zwracanych oznaczonych `volatile`,
   - specjalizacji szablonów dla typów `volatile`.
 
@@ -6885,10 +7616,56 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
   W praktyce do synchronizacji wątków zawsze należy używać `std::atomic`,
   a nie `volatile`.
 
-* Brak dodatkowych usunięć lub deprecacji w zakresie elementów wymienionych w tej sekcji.
+  W C++23 wycofano deprecjację złożonych przypisań **bitowych** (`|=`, `&=`, `^=`), ponieważ są
+  powszechne w kodzie obsługującym rejestry sprzętowe. `++`, `--` oraz pozostałe przypisania złożone
+  (np. `+=`) nadal są przestarzałe.
+
+* **Usunięte nagłówki** `<ccomplex>`, `<ciso646>`, `<cstdalign>`, `<cstdbool>` i `<ctgmath>`.
+  Były to „puste” nagłówki, które nie wnosiły nic własnego: w C++ słowa `and`, `or`, `bool` czy `alignas`
+  są wbudowanymi słowami kluczowymi, a `<ccomplex>` i `<ctgmath>` jedynie dołączały
+  `<complex>` oraz `<cmath>`.
+
+* **Pusta specyfikacja wyjątków `throw()`** — usunięta (w C++17 była jeszcze dozwolona
+  jako synonim `noexcept(true)`). Należy używać `noexcept`.
+
+* **Usunięte elementy biblioteki** (przestarzałe od C++17):
+  - `std::uncaught_exception` — zamiast tego `std::uncaught_exceptions`,
+  - `std::raw_storage_iterator`,
+  - `std::is_literal_type` (oraz `std::is_literal_type_v`),
+  - `std::result_of` — zamiast tego `std::invoke_result`.
+
+* **Przecinek w indeksowaniu** — wyrażenie `a[b, c]` (operator przecinek wewnątrz nawiasów kwadratowych)
+  zostało oznaczone jako **przestarzałe**. W C++23 ten zapis zyskuje nowe znaczenie
+  (wielowymiarowy `operator[]`).
 
 ***
 
 ### C++23
 
-Standard C++23 **nie wprowadza nowych deprecacji ani usunięć** dotyczących elementów opisanych powyżej.
+C++23 przynosi niewiele nowych usunięć, za to porządkuje kilka starych deprecjacji.
+
+**Usunięte:**
+
+* wsparcie dla garbage collectora (`std::declare_reachable`, `std::get_pointer_safety`
+  i pokrewne — patrz sekcja o atrybutach i zbieraniu śmieci),
+* **łączenie literałów napisowych o różnych kodowaniach** (np. `L"a" u"b"`) — takie
+  mieszane łączenie było dotąd warunkowo wspierane i zostało usunięte,
+* **niekodowalne i wieloznakowe literały szerokie** (np. szeroki literał znakowy zawierający
+  kilka znaków albo znak, którego nie da się zapisać w `wchar_t`).
+
+**Przestarzałe:**
+
+* `std::aligned_storage` i `std::aligned_union` — zamiast nich `alignas` + `std::byte`,
+* `std::float_denorm_style`, `std::numeric_limits<T>::has_denorm`
+  i `std::numeric_limits<T>::has_denorm_loss`.
+
+**Wycofane deprecjacje (elementy, które przestały być przestarzałe):**
+
+* **przecinek w indeksowaniu** — zapis `a[b, c]` nie jest już przestarzałym operatorem przecinka,
+  tylko listą argumentów wielowymiarowego `operator[]`; dawne znaczenie wymaga dodatkowych nawiasów: `a[(b, c)]`,
+* **złożone przypisania bitowe na `volatile`** (`|=`, `&=`, `^=`) — przestały być przestarzałe,
+  ponieważ są powszechne w kodzie obsługującym rejestry sprzętowe,
+* **nagłówki biblioteki C w formie `.h`** (np. `<stdlib.h>`) — przestały być traktowane jako przestarzałe.
+
+> **Uwaga:** specyfikacja techniczna Concurrency TS 2 (rozszerzenia dla programowania współbieżnego)
+> została opublikowana osobno jako ISO/IEC TS 9922:2024 i **nie jest** częścią standardu C++23.
