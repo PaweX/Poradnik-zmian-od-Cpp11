@@ -3385,7 +3385,7 @@ import "moj.h";     // importuje lokalny nagłówek jako moduł
 > po 2022 roku. W nowych projektach warto już używać modułów,
 > ale migracja istniejących dużych projektów wymaga czasu.
 
-##### Uzupełnienie (C++23): moduły standardowe `std` i `std.compat`
+##### (C++23): moduły standardowe `std` i `std.compat`
 
 C++23 udostępnia całą bibliotekę standardową jako gotowe moduły:
 
@@ -4517,7 +4517,7 @@ Mechanizm ten ułatwia szybkie rozpoznawanie dużych liczb przez człowieka (tzw
 
 ***
 
-#### Uzupełnienie (C++23): sufiksy `z` i `uz` dla literałów całkowitych
+#### (C++23): sufiksy `z` i `uz` dla literałów całkowitych
 
 Zapis `auto i = 0;` daje `int`, a `v.size()` zwraca `std::size_t` (bez znaku),
 co powodowało ostrzeżenia o porównaniu liczb ze znakiem i bez znaku.
@@ -4539,7 +4539,7 @@ Sufiksy można łączyć w dowolnej kolejności (`uz`, `zu`, `UZ`, `ZU`).
 
 ***
 
-#### Uzupełnienie (C++23): rozszerzone typy zmiennoprzecinkowe (`<stdfloat>`)
+#### (C++23): rozszerzone typy zmiennoprzecinkowe (`<stdfloat>`)
 
 Nagłówek `<stdfloat>` definiuje typy zmiennoprzecinkowe o **ściśle określonej** szerokości
 (zgodne z IEEE 754 oraz formatem `bfloat16` stosowanym w uczeniu maszynowym):
@@ -4944,7 +4944,7 @@ z niestandardowymi alokatorami i komparatorami.
 
 ***
 
-##### Uzupełnienie (C++23): atrybut `[[assume]]`
+##### (C++23): atrybut `[[assume]]`
 
 C++23 wprowadza atrybut, który pozwala **obiecać kompilatorowi**, że w danym miejscu
 pewien warunek jest prawdziwy:
@@ -4969,7 +4969,7 @@ Ważne:
 Wcześniej ten sam efekt dawały rozszerzenia kompilatorów: `__builtin_assume` (Clang),
 `__assume` (MSVC).
 
-##### Uzupełnienie (C++23): `std::unreachable`
+##### (C++23): `std::unreachable`
 
 Funkcja `std::unreachable()` z nagłówka `<utility>` oznacza miejsce, do którego
 **wykonanie nigdy nie powinno dojść**. Dojście do niej to niezdefiniowane zachowanie —
