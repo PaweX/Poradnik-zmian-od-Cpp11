@@ -1,4 +1,4 @@
-# Poradnik zmian następujacych po C++03
+# Poradnik zmian następujących po C++03
 
 Niniejszy poradnik ma na celu przedstawienie i wyjaśnienie wszystkich istotnych zmian,
 jakie zaszły w języku C++ od czasów standardu C++03. Obecnie obejmuje on zmiany
@@ -105,7 +105,7 @@ Dla `std::vector<T>` konstruktor przenoszący:
 
 Jeśli funkcja zwraca `std::vector<T>` przez wartość:
 ```cpp
-std::vector<int> makeVec()
+std::vector<int> stworzWektor()
 {
     return {1, 2, 3};
 }
@@ -115,6 +115,10 @@ to:
 * obiekt tymczasowy jest **rvalue**,
 * kompilator automatycznie użyje **konstruktora przenoszącego**,
 * nie trzeba zmieniać sygnatury funkcji na `std::vector<T>&&` ani pisać dodatkowego kodu.
+
+> **Uwaga:** w tym konkretnym przykładzie kompilator zwykle w ogóle pomija kopiowanie i przenoszenie
+> (_copy elision_ — pominięcie kopiowania), a od C++17 jest to wręcz gwarantowane.
+> Konstruktor przenoszący jest używany tam, gdzie takie pominięcie nie jest możliwe.
 
 **Co dokładnie robi konstruktor przenoszący?**
 Konstruktor przenoszący `std::vector<T>` może **przenieść** wskaźnik do wewnętrznej tablicy (C‑style array) z obiektu tymczasowego do nowego obiektu docelowego, a następnie ustawić wskaźnik w obiekcie tymczasowym na `nullptr`. Ponieważ obiekt tymczasowy nie będzie już używany, nikt nie spróbuje odczytać tego `nullptr`, a pamięć nie zostanie zwolniona przy jego zniszczeniu. Dzięki temu operacja **omija kosztowne głębokie kopiowanie** i jest bezpieczna oraz niewidoczna dla użytkownika.
@@ -243,7 +247,7 @@ Bez przenoszenia:
 * `std::string` byłby wolny,
 * `std::unique_ptr` nie mógłby istnieć,
 * `std::optional`, `std::variant`, `std::function` byłyby niepraktyczne,
-* biblioteka standardowa byłaby 10× wolniejsza.
+* biblioteka standardowa byłaby znacznie wolniejsza.
 
 Przenoszenie umożliwia:
 
@@ -272,6 +276,24 @@ Połączenie **referencji do r‑wartości** z pewnymi zmianami w semantyce refe
 
   * **forwarding references** (referencje przekazujące, dawniej nazywane uniwersalne - _universal references_): parametry szablonowe zadeklarowane jako `T&&` w kontekście dedukcji typu,
   * `std::forward<T>(arg)` do zachowania oryginalnej kategorii wartości przy przekazywaniu.
+
+Przykład:
+```cpp
+void odbierz(const std::string& tekst);   // przeciążenie dla l-wartości (obiektów, które będą dalej używane)
+void odbierz(std::string&& tekst);        // przeciążenie dla r-wartości (obiektów tymczasowych)
+
+template <typename T>
+void przekaz(T&& argument)   // forwarding reference: T&& w kontekście dedukcji typu
+{
+    // std::forward zachowuje kategorię wartości argumentu:
+    // l-wartość trafi do pierwszego przeciążenia, r-wartość do drugiego.
+    odbierz(std::forward<T>(argument));
+}
+
+std::string s = "ala";
+przekaz(s);                   // l-wartość -> odbierz(const std::string&)
+przekaz(std::string("ola"));  // r-wartość -> odbierz(std::string&&)
+```
 
 **Dlaczego to jest przydatne?**
 Umożliwia tworzenie funkcji fabrycznych i konstruktorów pomocniczych, które wywołują właściwy konstruktor docelowego typu bez niepotrzebnych kopii. Przykłady w bibliotece standardowej: `emplace_back`, `std::make_unique`, `std::make_shared` — wszystkie korzystają z perfect forwarding, aby przekazać argumenty bezpośrednio do odpowiedniego konstruktora elementu.
@@ -353,6 +375,7 @@ Dzięki `constexpr` kompilator może zrozumieć i zweryfikować, że `pobierzTrz
 
 * **C++14** — reguły zostały znacznie poluzowane: `constexpr` może zawierać zmienne lokalne, pętle i instrukcje warunkowe, co pozwala pisać bardziej „normalne” funkcje, które nadal mogą być ewaluowane w czasie kompilacji.
 * **C++17** — dodano `if constexpr`, ułatwiające warunkowe generowanie kodu w szablonach (kompilacyjny branching).
+* **C++23** — instrukcja `if consteval` oraz dalsze poluzowanie ograniczeń (patrz niżej),
 * **C++20** — `constexpr` stało się jeszcze bardziej elastyczne; wprowadzono dodatkowo **`consteval`** (funkcja, która **musi** być wykonana w czasie kompilacji) oraz **`constinit`** (zapewnia inicjalizację statyczną bez ukrytej dynamicznej inicjalizacji).
 
 ***
@@ -417,6 +440,15 @@ struct Kolo : Figura
   pod warunkiem, że pamięć zostanie zwolniona przed końcem obliczenia
   (brak trwałej alokacji constexpr).
 
+* **Zmienne bez inicjalizatora** — w funkcji `constexpr` można zadeklarować zmienną bez wartości
+  początkowej (np. `int x;`), o ile zostanie ona przypisana przed użyciem.
+
+* **Destruktory `constexpr`** — destruktor też może być `constexpr`, więc typy z nietrywialnym
+  destruktorem mogą być używane w wyrażeniach stałych.
+
+* **`std::is_constant_evaluated()`** — funkcja pozwalająca sprawdzić, czy kod jest właśnie
+  wykonywany w czasie kompilacji (w C++23 zastępuje ją wygodniejsze `if consteval`).
+
 ###### Uzupełnienie (C++23): dalsze luzowanie ograniczeń `constexpr`
 
 C++23 znosi kolejne ograniczenia funkcji `constexpr`:
@@ -464,7 +496,9 @@ Przykład `consteval`:
 consteval int kwadrat(int x) { return x * x; }
 
 constexpr int a = kwadrat(3); // OK — wywołanie wykonane w czasie kompilacji
-int b = kwadrat(4); // Błąd kompilacji: kwadrat() musi być wywołane w czasie kompilacji
+int b = kwadrat(4); // OK — argument jest stałą, więc wywołanie da się obliczyć w czasie kompilacji
+int n = 4;
+// int c = kwadrat(n); // Błąd kompilacji: n nie jest stałą, a kwadrat() musi być obliczone w czasie kompilacji
 ```
 
 Przykład `constexpr`:
@@ -483,8 +517,12 @@ int main()
 Przykład `constinit`:
 ```cpp
 // gwarantuje inicjalizację statyczną, ale nie czyni zmiennej const
-constinit int licznik_globalny = 0; // musi być zainicjalizowane statycznie
-licznik_globalny = 5; // dozwolone — constinit nie oznacza const
+constinit int licznikGlobalny = 0; // musi być zainicjalizowane statycznie
+
+int main()
+{
+    licznikGlobalny = 5; // dozwolone — constinit nie oznacza const
+}
 ```
 
 **Dodatkowe uwagi praktyczne**
@@ -611,8 +649,8 @@ Zmienne `constexpr`:
 ##### `constexpr` dla typów użytkownika i dodatkowe wymagania
 
 * Konstruktory mogą być oznaczone jako `constexpr`, co pozwala tworzyć obiekty typu użytkownika w czasie kompilacji — pod warunkiem, że spełniają wszystkie wymagania `constexpr` obowiązujące w danym standardzie.
-* W C11 ciało konstruktora `constexpr` mogło zawierać **wyłącznie deklaracje i puste instrukcje** (czyli nie mogło zawierać instrukcji wykonawczych, deklaracji zmiennych lokalnych ani definicji typów). Od C14/C++20 ograniczenia te zostały znacząco poluzowane.
-* Destruktory typów, które mają być używane w kontekście wyrażeń stałych, **muszą być trywialne** — czyli takie, które **nie mają własnego ciała**, **nie wykonują żadnego kodu**, **nie zwalniają zasobów**, **nie są zdefiniowane przez użytkownika**, a ich implementację generuje automatycznie kompilator. Trywialny destruktor jest „pusty” i może zostać całkowicie pominięty podczas ewaluacji kompilacyjnej.
+* W C++11 ciało konstruktora `constexpr` mogło zawierać **wyłącznie deklaracje i puste instrukcje** (czyli nie mogło zawierać instrukcji wykonawczych, deklaracji zmiennych lokalnych ani definicji typów). Od C++14 (a w kolejnych standardach jeszcze bardziej) ograniczenia te zostały znacząco poluzowane.
+* Destruktory typów, które mają być używane w kontekście wyrażeń stałych, **muszą być trywialne** (do C++17; od C++20 destruktor może być też `constexpr`) — czyli takie, które **nie mają własnego ciała**, **nie wykonują żadnego kodu**, **nie zwalniają zasobów**, **nie są zdefiniowane przez użytkownika**, a ich implementację generuje automatycznie kompilator. Trywialny destruktor jest „pusty” i może zostać całkowicie pominięty podczas ewaluacji kompilacyjnej.
 * **Konstruktor kopiujący**, a także inne funkcje członkowskie (np. operatory), w typie posiadającym konstruktory `constexpr` **zwykle również powinny być oznaczone jako `constexpr`**, aby umożliwić zwracanie obiektów przez wartość z funkcji `constexpr` oraz wykonywanie operacji na tych obiektach w czasie kompilacji. Bez tego obiekt mógłby „stracić constexpr‑owość” podczas kopiowania lub operacji.
 
 Przykład:
@@ -642,7 +680,7 @@ struct Wektor2
 * ciało konstruktora `constexpr` może zawierać tylko deklaracje i puste instrukcje,
 * destruktor musi być trywialny (czyli generowany automatycznie, bez kodu wykonywalnego).
 
-> Od C14 i C20 zasady są znacznie luźniejsze — można używać zmiennych lokalnych, pętli, instrukcji warunkowych, a destruktory nie muszą już być trywialne, o ile spełniają wymagania ewaluacji kompilacyjnej.
+> Od C++14 i C++20 zasady są znacznie luźniejsze — można używać zmiennych lokalnych, pętli, instrukcji warunkowych, a destruktory nie muszą już być trywialne, o ile spełniają wymagania ewaluacji kompilacyjnej.
 
 **Zachowanie wywołań `constexpr` z nie‑stałymi argumentami**
 
@@ -652,13 +690,13 @@ Jeżeli funkcja lub konstruktor `constexpr` zostanie wywołany z argumentami, kt
 
 **C++14 pętla w `constexpr`:**
 ```cpp
-constexpr int factorial(int n)
+constexpr int silnia(int n)
 {
     int r = 1;
     for (int i = 2; i <= n; ++i) r *= i;
     return r;
 }
-constexpr int f6 = factorial(6); // OK w C++14+
+constexpr int s6 = silnia(6); // OK w C++14+
 ```
 
 **C++17 if constexpr:**
@@ -673,9 +711,9 @@ constexpr auto id(T x)
 
 **C++20 consteval:**
 ```cpp
-consteval int sq(int x) { return x * x; }
-constexpr int a = sq(3); // OK
-// int b = sq(4); // błąd: sq musi być wywołane w czasie kompilacji
+consteval int kwadratCt(int x) { return x * x; }
+constexpr int a = kwadratCt(3); // OK
+// int n = 4; int b = kwadratCt(n); // błąd: n nie jest stałą, a funkcja musi być wywołana w czasie kompilacji
 ```
 
 **Uwaga o rzeczywistej ewaluacji**
@@ -684,7 +722,7 @@ Nawet jeśli funkcja jest oznaczona `constexpr`, kompilator wykona jej obliczeni
 
 **Krótkie podsumowanie**
 
-* **`constexpr`** umożliwia definiowanie funkcji, konstruktorów i zmiennych, które **mogą** być obliczane w czasie kompilacji; reguły były stopniowo poluzowywane od C11 do C20.
+* **`constexpr`** umożliwia definiowanie funkcji, konstruktorów i zmiennych, które **mogą** być obliczane w czasie kompilacji; reguły były stopniowo poluzowywane od C++11 do C++23.
 * **`consteval`** (C++20) wymusza kompilacyjną ewaluację.
 * Mechanizmy `constexpr` i pokrewne są fundamentem wydajnego metaprogramowania, bezpiecznej inicjalizacji statycznej i optymalizacji w nowoczesnym C++.
 
@@ -763,6 +801,9 @@ W C++11 typ (class/struct/union) jest POD, jeśli:
 * jest **trivial**,
 * jest **standard-layout**,
 * wszystkie jego pola niestatyczne i klasy bazowe również są POD.
+
+> **Uwaga:** od C++20 cecha `std::is_pod` jest **przestarzała** — zamiast niej sprawdza się osobno
+> `std::is_trivial` i `std::is_standard_layout`.
 
 ***
 
@@ -869,19 +910,20 @@ C++11 wprowadził rozwiązanie: **`extern template`**, działające podobnie jak
 
 W C++03 wymuszenie instancjonowania wyglądało tak:
 ```cpp
-template class std::vector<MyClass>;
+template class std::vector<MojaKlasa>;
 ```
 
 W C++11 można napisać:
 ```cpp
-extern template class std::vector<MyClass>;
+extern template class std::vector<MojaKlasa>;
 ```
 
 co mówi kompilatorowi:
 
 > „Nie instancjonuj tego szablonu w tym pliku — instancjonacja będzie gdzie indziej”.
 
-To pozwala znacząco skrócić czas kompilacji dużych projektów.
+Faktyczne instancjonowanie wykonuje się wtedy tylko w jednym pliku `.cpp`, za pomocą
+`template class std::vector<MojaKlasa>;`. To pozwala znacząco skrócić czas kompilacji dużych projektów.
 
 ***
 
@@ -1007,7 +1049,7 @@ To ogromne ułatwienie w porównaniu z C++03, gdzie trzeba było ręcznie wywoł
 
 C++03 miał wiele problemów związanych z inicjalizacją typów. Istnieje kilka sposobów, aby to zrobić, a niektóre z nich dają różne rezultaty, jeśli zamieni się je miejscami. Tradycyjna składnia konstruktora, na przykład, może wyglądać jak deklaracja funkcji, i trzeba podejmować dodatkowe kroki, aby kompilator — zgodnie z zasadą **most vexing parse** — nie pomylił jej z taką deklaracją.
 
-W C++03 tylko typy \*\*POD\*\* i agregaty mogły być inicjalizowane listami `{ ... }`:
+W C++03 tylko typy **POD** i agregaty mogły być inicjalizowane listami `{ ... }`:
 ```cpp
 JakisTyp zmienna = { /* wartości */ };
 ```
@@ -1065,12 +1107,12 @@ IdString pobierzString()
 
 Jeśli klasa ma konstruktor:
 ```cpp
-TypeName(initializer_list<T>);
+NazwaTypu(initializer_list<T>);
 ```
 
 to **ma on pierwszeństwo** przed innymi konstruktorami, jeśli tylko lista `{}` pasuje typem. Przykład:
 ```cpp
-std::vector<int> vec{ 4 };
+std::vector<int> wektor{ 4 };
 ```
 
 To **nie** tworzy wektora o rozmiarze 4. Zamiast tego wywoływany jest konstruktor:
@@ -1080,7 +1122,7 @@ vector(initializer_list<int>); // tworzy wektor z jednym elementem: 4
 
 Aby utworzyć wektor o rozmiarze 4, trzeba użyć klasycznej składni:
 ```cpp
-std::vector<int> vec(4); // poprawnie: wektor o rozmiarze 4
+std::vector<int> wektor(4); // poprawnie: wektor o rozmiarze 4
 ```
 
 ***
@@ -1127,8 +1169,8 @@ Typ `jakisWywolywalnyTyp` jest dokładnie tym, co zwraca odpowiednia instancja `
 
 **Uwaga historyczna**
 
-> W języku **B** (poprzedniku C) słowo `auto` oznaczało _zmienną automatyczną_ (lokalną).
-> C++11 **zmienia jego znaczenie** — teraz służy do _wnioskowania typu_.
+> W języku **B** (poprzedniku C), w C oraz w C++03 słowo `auto` oznaczało _zmienną automatyczną_ (lokalną) —
+> było to praktycznie nieużywane słowo kluczowe. C++11 **zmienia jego znaczenie** — teraz służy do _wnioskowania typu_.
 
 ###### Uzupełnienie (C++17): nowe reguły dedukcji `auto` z listy inicjalizacyjnej
 
@@ -1145,7 +1187,7 @@ auto b{1};           // teraz int (nie initializer_list<int>)
 auto c{1, 2};        // błąd kompilacji — niedozwolone od C++17
 ```
 
-Czyli `auto x{val}` od C++17 deduuje typ bezpośrednio jak `val`, a nie jako listę jednoelementową.
+Czyli `auto x{val}` od C++17 dedukuje typ bezpośrednio jak `val`, a nie jako listę jednoelementową.
 
 ###### Uzupełnienie (C++23): `auto(x)` i `auto{x}` — jawna kopia (decay-copy)
 
@@ -1348,11 +1390,15 @@ decltype(auto) zwroc(int& x)
 }
 ```
 
-W przeciwieństwie do zwykłego `auto`, które zawsze zwraca typ niererefencyjny, `decltype(auto)` umożliwia precyzyjne odwzorowanie typu wyrażenia, w tym:
+W przeciwieństwie do zwykłego `auto`, które zawsze zwraca typ niereferencyjny, `decltype(auto)` umożliwia precyzyjne odwzorowanie typu wyrażenia, w tym:
 
 * referencji l‑wartości (`T&`),
 * referencji r‑wartości (`T&&`),
 * kwalifikatorów `const` i `volatile`.
+
+> **Uwaga:** nawiasy w `return (x);` mają tu duże znaczenie. W funkcji zwracającej `decltype(auto)`
+> zapis `return (x);` dla zmiennej **lokalnej** zwraca referencję do obiektu, który przestaje istnieć
+> po wyjściu z funkcji (zwisająca referencja). Zapis `return x;` zwróciłby kopię.
 
 Mechanizm ten jest szczególnie przydatny w szablonach oraz funkcjach przekazujących argumenty dalej (perfect forwarding).
 
@@ -1446,6 +1492,47 @@ Przykład:
 
 To bardzo przydatne w programowaniu funkcyjnym, algorytmach STL i callbackach.
 
+Przykład użycia z algorytmem standardowym — sortowanie malejąco:
+```cpp
+std::vector<int> liczby = { 5, 2, 9, 1 };
+
+// Trzeci argument to lambda porównująca dwa elementy. Przed C++11 trzeba było pisać osobną funkcję lub funktor.
+std::sort(liczby.begin(), liczby.end(), [](int a, int b) { return a > b; });
+// liczby == { 9, 5, 2, 1 }
+```
+
+##### Przechwytywanie zmiennych (lista przechwytywania)
+
+Nawiasy kwadratowe na początku lambdy (`[]`) to **lista przechwytywania** (_capture list_).
+Określa ona, które zmienne z otoczenia lambda może używać w swoim ciele:
+
+* `[]` — lambda nie używa żadnych zmiennych z otoczenia,
+* `[x]` — przechwycenie **kopii** zmiennej `x` (przez wartość),
+* `[&x]` — przechwycenie **referencji** do `x` (lambda widzi i może zmieniać oryginał),
+* `[=]` — kopie wszystkich używanych zmiennych,
+* `[&]` — referencje do wszystkich używanych zmiennych,
+* `[=, &x]` i `[&, x]` — domyślny sposób plus wyjątek dla wybranej zmiennej.
+
+```cpp
+int mnoznik = 3;
+int licznik = 0;
+
+auto pomnoz  = [mnoznik](int x) { return x * mnoznik; };   // kopia zmiennej mnoznik
+auto zwieksz = [&licznik]() { ++licznik; };                // referencja do zmiennej licznik
+
+mnoznik = 10;                  // nie wpływa na lambdę — ma własną kopię z chwili utworzenia
+int wynik = pomnoz(5);         // 15
+zwieksz();
+zwieksz();                     // licznik == 2
+```
+
+Dwie ważne zasady:
+
+* kopia przechwycona przez wartość jest domyślnie **tylko do odczytu** — aby zmienić swoją kopię,
+  lambda musi być oznaczona `mutable` (`[licznik]() mutable { ++licznik; }`; zmienia się wtedy tylko kopia),
+* lambda z przechwyconą **referencją** nie może przeżyć zmiennej, do której się odwołuje —
+  jeśli zmienna zostanie zniszczona, lambda będzie używać nieprawidłowej referencji.
+
 ##### (C++14): lambdy generyczne (generic lambdas)
 
 W C++11 parametry funkcji lambda musiały mieć **konkretne typy** — nie można było używać `auto`.
@@ -1485,7 +1572,7 @@ Lambdy generyczne są więc w praktyce **szablonowymi funktorami zapisanymi w po
 C++14 dodał lambdy generyczne (`auto`), ale nie pozwalał jawnie nazwać typu
 ani ograniczyć go konceptem. C++20 umożliwia podanie pełnej listy parametrów szablonu:
 ```cpp
-// C++14: auto — typ anonimowy, nie można go użyć w ciele lambdy
+// C++14: auto — typ nie ma nazwy (w ciele można go uzyskać tylko przez decltype(x))
 auto f = [](auto x) { return x * 2; };
 
 // C++20: jawna lista — typ T dostępny z nazwy
@@ -1540,7 +1627,7 @@ Dzięki temu:
 * można tworzyć **własne pola lambdy**, nawet jeśli nie istnieją w zewnętrznym zakresie,
 * przechwytywanie staje się bardziej elastyczne i przypomina inicjalizację pól w konstruktorze.
 
-Mechanizm ten jest kluczowy dla nowoczesnego stylu programowania funkcyjnego w C++ i stanowi fundament dla późniejszych rozszerzeń (np. init‑captures w structured bindings).
+Mechanizm ten jest kluczowy dla nowoczesnego stylu programowania funkcyjnego w C++ i stanowi fundament dla późniejszych rozszerzeń lambd.
 
 ###### Uzupełnienie (C++17): przechwytywanie `*this` przez wartość
 
@@ -1580,12 +1667,13 @@ W C++17 i wcześniej zapis `[=]` niejawnie przechwytywał `this` przez wskaźnik
 co było zaskakujące — programista mógł myśleć, że wszystko jest przechwycone
 przez wartość, podczas gdy `this` nadal było wskaźnikiem.
 
-C++20 **zakazuje** niejawnego przechwytywania `this` przez `[=]`.
+C++20 oznacza niejawne przechwytywanie `this` przez `[=]` jako **przestarzałe**
+(kod nadal się kompiluje, ale kompilator może ostrzegać).
 Jeśli potrzebujemy zarówno domyślnego przechwytywania przez wartość, jak i `this`,
-musimy napisać to jawnie:
+warto napisać to jawnie:
 ```cpp
 // C++17: [=] niejawnie przechwytywał też this — dozwolone, ale mylące
-// C++20: [=] bez this — this nie jest przechwycone
+// C++20: [=] bez this — nadal niejawnie przechwytuje this, ale jest to przestarzałe (ostrzeżenie)
 // C++20: [=, this] — jawne przechwycenie this przez wskaźnik
 // C++20: [=, *this] — jawne przechwycenie kopii obiektu (jak w C++17)
 
@@ -1644,9 +1732,9 @@ Składnia deklaracji funkcji odziedziczona z języka C była wystarczająca dla 
 W C++03 taki kod jest niepoprawny:
 ```cpp
 template <class L, class R>
-Ret dodaj(const L& lhs, const R& rhs)
+Wynik dodaj(const L& lewy, const R& prawy)
 {
-    return lhs + rhs; // Ret powinien być typem wyniku lhs + rhs
+    return lewy + prawy; // Wynik powinien być typem wyniku lewy + prawy
 }
 ```
 
@@ -1654,30 +1742,30 @@ Nawet z `decltype` w C++11 nie da się tego zapisać w klasycznej formie:
 ```cpp
 // Niepoprawne w C++11
 template <class L, class R>
-decltype(lhs + rhs) dodaj(const L& lhs, const R& rhs)
+decltype(lewy + prawy) dodaj(const L& lewy, const R& prawy)
 {
-    return lhs + rhs;
+    return lewy + prawy;
 }
 ```
 
 Dlaczego?
-Bo `lhs` i `rhs` **nie istnieją jeszcze** w momencie, gdy parser czyta nagłówek funkcji.
+Bo `lewy` i `prawy` **nie istnieją jeszcze** w momencie, gdy parser czyta nagłówek funkcji.
 
 ##### Trailing return type (typ zwracany po parametrze)
 
 C++11 wprowadza nową składnię:
 ```cpp
 template <class L, class R>
-auto add(const L& lhs, const R& rhs) -> decltype(lhs + rhs)
+auto dodaj(const L& lewy, const R& prawy) -> decltype(lewy + prawy)
 {
-    return lhs + rhs;
+    return lewy + prawy;
 }
 ```
 
 Tutaj:
 
 * `auto` jest tylko częścią składni (nie oznacza wnioskowania typu),
-* `decltype(lhs + rhs)` może używać parametrów, bo są już znane parserowi.
+* `decltype(lewy + prawy)` może używać parametrów, bo są już znane parserowi.
 
 ***
 
@@ -1698,9 +1786,10 @@ struct JakasStruktura
 
 Od C++14 można pominąć trailing return type:
 ```cpp
-auto add(const L& lhs, const R& rhs)
+template <class L, class R>
+auto dodaj(const L& lewy, const R& prawy)
 {
-    return lhs + rhs; // kompilator sam wywnioskuje typ
+    return lewy + prawy; // kompilator sam wywnioskuje typ
 }
 ```
 
@@ -1788,11 +1877,14 @@ Jednak delegowanie ma ważną zaletę: **domyślna wartość (np. 42) znajduje s
 To ułatwia utrzymanie bibliotek — zmiana wartości domyślnej nie wymaga rekompilacji kodu użytkownika.
 
 **Uwaga dla początkującego:**
-W C03 obiekt uznawano za skonstruowany dopiero po zakończeniu działania konstruktora.
-W C11 obiekt uznaje się za skonstruowany, gdy **jakikolwiek konstruktor** zakończy działanie.
+W C++03 obiekt uznawano za skonstruowany dopiero po zakończeniu działania konstruktora.
+W C++11 obiekt uznaje się za skonstruowany, gdy **jakikolwiek konstruktor** zakończy działanie.
 Ponieważ delegowanie pozwala wykonać kilka konstruktorów po kolei, oznacza to, że konstruktor delegujący działa już na **w pełni skonstruowanym obiekcie**.
 
 Konstruktory klas pochodnych wykonują się **dopiero po zakończeniu całego delegowania** w klasach bazowych.
+
+Konstruktor delegujący nie może jednocześnie inicjalizować pól na własnej liście inicjalizacyjnej —
+wszystkie pola inicjalizuje konstruktor, do którego deleguje.
 
 ***
 
@@ -1816,6 +1908,7 @@ public:
 Ograniczenia:
 
 * to mechanizm **„wszystko albo nic”** — dziedziczymy wszystkie konstruktory bazowe,
+* konstruktory domyślny, kopiujący i przenoszący **nie są dziedziczone**,
 * jeśli konstruktor klasy pochodnej ma taką samą sygnaturę, to **zacienia** konstruktor bazowy,
 * przy wielodziedziczeniu nie można dziedziczyć konstruktorów z dwóch klas, jeśli mają identyczne sygnatury (problem diamentu).
 
@@ -1850,10 +1943,10 @@ Zasady:
 
 Można używać:
 
-* przypisania (`= 5`),
-* list inicjalizacyjnych (`{5}`),
-* konstruktorów (`int wartosc(5)`),
-* jednolitej inicjalizacji (`int wartosc{5}`).
+* przypisania (`int wartosc = 5;`),
+* nawiasów klamrowych, czyli jednolitej inicjalizacji (`int wartosc{5};`).
+
+Nie wolno natomiast użyć nawiasów okrągłych (`int wartosc(5);`) — taki zapis wyglądałby jak deklaracja funkcji.
 
 ***
 
@@ -7781,6 +7874,12 @@ C++17 usuwa większość elementów oznaczonych jako przestarzałe w C++11:
   - `std::raw_storage_iterator`,
   - `std::is_literal_type` (oraz `std::is_literal_type_v`),
   - `std::result_of` — zamiast tego `std::invoke_result`.
+
+* **Niejawne przechwytywanie `this` przez `[=]`** w lambdach — przestarzałe; należy pisać jawnie
+  `[=, this]` lub `[=, *this]`.
+
+* **`std::is_pod`** (oraz `std::is_pod_v`) — przestarzałe; zamiast tego `std::is_trivial`
+  i `std::is_standard_layout`.
 
 * **Przecinek w indeksowaniu** — wyrażenie `a[b, c]` (operator przecinek wewnątrz nawiasów kwadratowych)
   zostało oznaczone jako **przestarzałe**. W C++23 ten zapis zyskuje nowe znaczenie
