@@ -1156,6 +1156,8 @@ zamieniają się na wskaźniki). Wynik jest wartością tymczasową (prvalue).
 Najczęstsze zastosowanie: przekazanie do funkcji **kopii** elementu, który ta funkcja może zmienić
 albo usunąć:
 ```cpp
+#include <vector>   // std::erase
+
 std::vector<int> v = { 1, 2, 1, 3 };
 
 // Błąd logiczny: v.front() zwraca referencję do elementu wewnątrz v.
@@ -1300,7 +1302,7 @@ Dedukcja typu zwracanego funkcji w C++14 stanowi fundament późniejszych rozsze
 
 ***
 
-##### **(C++14): `decltype(auto)` i alternatywna dedukcja typu**
+##### (C++14): `decltype(auto)` i alternatywna dedukcja typu
 
 C++11 wprowadził dwa mechanizmy dedukcji typu:
 
@@ -1906,7 +1908,7 @@ To częsty błąd, szczególnie gdy ktoś modyfikuje klasę bazową i nie zauwa�
 
 ##### `override` — wymuszenie poprawnego nadpisania
 
-C++11 wprowadza słowo kluczowe (a właściwie _atrybut deklaratora_) `override`:
+C++11 wprowadza słowo kluczowe (a właściwie _identyfikator o specjalnym znaczeniu_) `override`:
 ```cpp
 struct KlasaBazowa
 {
@@ -1972,43 +1974,21 @@ Dzieje się tak dlatego, że taka deklaracja byłaby traktowana jako próba nadp
 ##### `override` i `final` — ważna uwaga
 
 Ani `override`, ani `final` **nie są słowami kluczowymi języka C++**.
-Technicznie są to **identyfikatory używane jako atrybuty deklaratora** (_declarator attributes_).
+Technicznie są to **identyfikatory o specjalnym znaczeniu** (_identifiers with special meaning_; w standardzie nazywane _virt-specifiers_ — specyfikatorami wirtualnymi).
+Nie mają nic wspólnego z atrybutami zapisywanymi w `[[...]]`.
 
 Oznacza to, że:
 
 * zyskują specjalne znaczenie **tylko w konkretnym miejscu**, czyli:
 
-  * po wszystkich specyfikatorach typu,
-  * po specyfikatorach dostępu (`public`, `private`, `protected`),
-  * po słowach takich jak `virtual`,
-  * ale **przed** inicjalizacją lub implementacją funkcji;
+  * po liście parametrów funkcji (i ewentualnych kwalifikatorach, np. `const`),
+  * ale **przed** `= 0`, `= default`, `= delete` lub ciałem funkcji;
 
 * **nie zmieniają typu funkcji**,
 
 * **nie tworzą nowych identyfikatorów**,
 
 * **nie wpływają na przeciążanie funkcji** — jedynie informują kompilator o zamiarze programisty.
-
-***
-
-##### Rozszerzalność atrybutów deklaratora
-
-Standard C++ dopuszcza możliwość dodawania nowych atrybutów deklaratora w przyszłych wersjach języka.
-Już dziś niektóre kompilatory mają własne rozszerzenia, które:
-
-* podpowiadają optymalizacje,
-* dodają metadane dla debuggera lub linkera,
-* wprowadzają atrybuty bezpieczeństwa,
-* wspierają _reflection_ (programowanie refleksyjne),
-* dodają informacje potrzebne do współpracy z innymi językami.
-
-Takie rozszerzenia mogą przyjmować parametry w nawiasach, np.:
-```cpp
-[[gnu::hot]]
-[[clang::annotate("info")]]
-```
-
-Zgodnie z konwencją ANSI, rozszerzenia specyficzne dla kompilatora powinny używać prefiksu `__` (podwójny podkreślnik).
 
 ***
 
@@ -2019,7 +1999,7 @@ Poza kontekstem deklaracji funkcji `override` i `final` **mogą być używane ja
 int final = 10; // poprawne, choć to bardzo zły pomysł
 ```
 
-Kompilator nada im specjalne znaczenie **tylko wtedy**, gdy pojawią się w miejscu, gdzie mogą pełnić rolę atrybutu deklaratora.
+Kompilator nada im specjalne znaczenie **tylko wtedy**, gdy pojawią się w miejscu, gdzie mogą pełnić rolę specyfikatora wirtualnego (po liście parametrów funkcji składowej).
 
 ***
 
@@ -2043,7 +2023,7 @@ W języku C problem ten łagodzono makrem `NULL`, które zwykle rozwijało się 
 
 * `0`.
 
-W C++ nie wolno niejawnie konwertować `void*` do innych typów wskaźnikowych, więc rzutowanie `0` na `void*` **nie daje żadnej korzyści**. W efekcie w C++ jedyną poprawną stałą pustego wskaźnika był **sam&#x20;**`0`.
+W C++ nie wolno niejawnie konwertować `void*` do innych typów wskaźnikowych, więc rzutowanie `0` na `void*` **nie daje żadnej korzyści**. W efekcie w C++ jedyną poprawną stałą pustego wskaźnika był **sam** `0`.
 
 To prowadziło do problemów z przeciążaniem funkcji:
 ```cpp
@@ -2053,7 +2033,7 @@ void foo(int);
 
 Jeśli `NULL` jest zdefiniowane jako `0` (co w C++ jest normą), to:
 ```cpp
-foo(NULL); // wywoła foo(int), co jest prawie na pewno błędem
+foo(NULL); // zwykle wywoła foo(int) (niektóre kompilatory, np. GCC, zgłoszą niejednoznaczność) — to prawie na pewno błąd
 ```
 
 ##### `nullptr` — nowe, jednoznaczne źródło pustego wskaźnika
@@ -2068,9 +2048,12 @@ C++11 wprowadza nową stałą pustego wskaźnika: `nullptr`.
 
 * **nie** konwertuje się ani nie porównuje do typów całkowitych (poza `bool`).
 
-Konwersja do `bool` daje `false` — tak samo jak w przypadku zwykłych wskaźników.
+`nullptr` konwertuje się do `bool` (wynik to `false`, tak samo jak dla zwykłych wskaźników),
+ale **tylko przy inicjalizacji bezpośredniej** — np. `bool b(nullptr);` lub `static_cast<bool>(nullptr)`.
+Zapis kopiujący `bool b = nullptr;` jest błędem.
 
 **Uwaga historyczna:** Pierwotnie planowano, że r‑value typu `nullptr_t` **nie** będzie konwertowalne do `bool`. Jednak grupa robocza uznała, że taka konwersja jest pożądana dla spójności z zachowaniem zwykłych wskaźników. Zmiana została jednogłośnie przyjęta w czerwcu 2008 roku.
+Później (poprawka CWG 1423) konwersję ograniczono do inicjalizacji bezpośredniej, aby uniknąć niezamierzonych konwersji.
 
 **Uwaga dodatkowa:** Podobna propozycja została przyjęta również do standardu **C23**.
 
@@ -2080,7 +2063,8 @@ Przykłady:
 ```cpp
 char* pc = nullptr; // OK
 int* pi = nullptr;  // OK
-bool b = nullptr;   // OK. b == false
+bool b(nullptr);    // OK (inicjalizacja bezpośrednia). b == false
+// bool c = nullptr; // błąd — niejawna konwersja nullptr -> bool jest niedozwolona
 int i = nullptr;    // błąd — nullptr nie konwertuje się do int
 ```
 
@@ -2088,29 +2072,20 @@ int i = nullptr;    // błąd — nullptr nie konwertuje się do int
 
 ##### `nullptr` a przeciążanie funkcji
 
+Dla przeciążeń z poprzedniego przykładu:
 ```cpp
-foo(nullptr); // wywoła foo(nullptr_t), a nie foo(int)
+void foo(char*);
+void foo(int);
+
+foo(nullptr);   // wywoła foo(char*): nullptr konwertuje się do wskaźnika, ale nie do int
 ```
 
-Pełny komentarz (bez uproszczeń):
-```cpp
-/*
-  Uwaga: w praktyce foo(nullptr_t) wywoła foo(char*) w powyższym przykładzie,
-  używając niejawnej konwersji do wskaźnika, ale tylko wtedy, gdy w zasięgu
-  nie ma innych przeciążeń przyjmujących kompatybilne typy wskaźników.
+Dodatkowe uwagi:
 
-  Jeśli istnieje wiele przeciążeń przyjmujących różne typy wskaźników,
-  rozstrzyganie przeciążeń zakończy się błędem niejednoznaczności,
-  chyba że istnieje dokładne przeciążenie foo(nullptr_t).
-
-  W standardowych nagłówkach C++11 typ nullptr_t powinien być zdefiniowany jako:
-      typedef decltype(nullptr) nullptr_t;
-
-  A NIE jako:
-      typedef int nullptr_t;      // starsze wersje C++, gdzie NULL musiało być równe 0
-      typedef void* nullptr_t;    // ANSI C, gdzie NULL definiowano jako ((void*)0)
-*/
-```
+* gdyby istniało dokładne przeciążenie `foo(std::nullptr_t)`, zostałoby wybrane właśnie ono (dokładne dopasowanie),
+* jeśli istnieje kilka przeciążeń z różnymi typami wskaźnikowymi (np. `foo(char*)` i `foo(int*)`),
+  wywołanie `foo(nullptr)` jest **niejednoznaczne** i kończy się błędem kompilacji,
+* typ `std::nullptr_t` jest zdefiniowany jako `decltype(nullptr)`.
 
 ***
 
@@ -2188,7 +2163,7 @@ W C++03 nie można było deklarować enumów wstępnie, ponieważ kompilator nie
 W C++11 można to zrobić, jeśli rozmiar jest znany — jawnie lub domyślnie:
 ```cpp
 enum Enum1;
-// Niepoprawne w C++03 i C++11: nie można określić typu bazowego,
+// Niepoprawne w C++03 i C++11: typ bazowy nie został określony,
 // więc kompilator nie zna rozmiaru wyliczenia.
 
 enum Enum2 : unsigned int;
@@ -2250,6 +2225,9 @@ Do konwersji elementu wyliczenia na jego typ bazowy trzeba było pisać
 `static_cast<std::underlying_type_t<Kolor>>(...)`. C++23 dodaje funkcję `std::to_underlying`
 z nagłówka `<utility>`:
 ```cpp
+#include <cstdint>
+#include <utility>   // std::to_underlying
+
 enum class Kolor : std::uint8_t
 {
     Czerwony = 1,
@@ -2355,18 +2333,24 @@ C++20 pozwala uzależnić `explicit` od wyrażenia `bool` obliczanego w czasie k
 Przydatne przy pisaniu typów opakowujących, które chcą zachować właściwości
 konwersji opakowanego typu:
 ```cpp
+#include <string>
+#include <type_traits>
+#include <utility>
+
 template <typename T>
 struct Opakowanie
 {
     T wartosc;
 
-    // Jawna konwersja tylko gdy T sam nie jest niejawnie konwertowalny z int
-    explicit(!std::is_convertible_v<int, T>)
-    Opakowanie(T v) : wartosc(v) {}
+    // Konstruktor jest jawny (explicit) tylko wtedy, gdy U NIE jest niejawnie konwertowalny do T.
+    template <typename U>
+    explicit(!std::is_convertible_v<U, T>)
+    Opakowanie(U&& v) : wartosc(std::forward<U>(v)) {}
 };
 
-Opakowanie<double> a = 42;   // OK — double jest niejawnie konwertowalny z int
-Opakowanie<std::string> b = "ala"; // OK — string konwertowalny z const char*
+Opakowanie<double> a = 42;           // OK — int niejawnie konwertuje się do double, więc konstruktor nie jest explicit
+// Opakowanie<std::string> b = 42;   // błąd — int nie konwertuje się niejawnie do std::string, konstruktor jest explicit
+Opakowanie<std::string> c("ala");    // OK — inicjalizacja bezpośrednia działa zawsze
 ```
 
 Przed C++20 uzyskanie takiego zachowania wymagało dwóch osobnych konstruktorów
@@ -2402,7 +2386,8 @@ void jeszcze() noexcept(false);   // może rzucać (domyślne zachowanie)
 ```
 
 Jeśli funkcja oznaczona `noexcept` rzuci wyjątek, program wywołuje `std::terminate()`
-natychmiast — bez rozwijania stosu. To gwarancja silniejsza niż w C++03.
+(to, czy stos zostanie wcześniej rozwinięty, zależy od implementacji). Wyjątek nigdy nie opuści
+takiej funkcji, więc kompilator nie musi generować kodu odpowiedzialnego za rozwijanie stosu.
 
 Kompilator może wykorzystać `noexcept` do **optymalizacji** — np. `std::vector`
 użyje konstruktora przenoszącego zamiast kopiującego tylko wtedy, gdy przenoszenie
@@ -2418,7 +2403,9 @@ class Bufor
     std::size_t rozmiar;
 
 public:
-    Bufor(Bufor&& inny) noexcept  // bez noexcept vector będzie kopiował zamiast przenosić
+    Bufor(const Bufor& inny);     // klasa jest też kopiowalna (ciało pominięto dla czytelności)
+
+    Bufor(Bufor&& inny) noexcept  // bez noexcept vector przy realokacji wybrałby kopiowanie zamiast przenoszenia
         : dane(inny.dane), rozmiar(inny.rozmiar)
     {
         inny.dane = nullptr;
@@ -2443,7 +2430,7 @@ Pozwala to warunkowo oznaczać funkcje jako `noexcept` na podstawie właściwoś
 używanych przez nie typów:
 ```cpp
 template <typename T>
-void zamien(T& a, T& b) noexcept(noexcept(T(std::move(a))))
+void zamien(T& a, T& b) noexcept(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>)
 {
     T tmp = std::move(a);
     a = std::move(b);
@@ -2451,7 +2438,8 @@ void zamien(T& a, T& b) noexcept(noexcept(T(std::move(a))))
 }
 ```
 
-Funkcja `zamien` jest `noexcept` dokładnie wtedy, gdy przenoszenie `T` jest `noexcept`.
+Funkcja `zamien` jest `noexcept` dokładnie wtedy, gdy zarówno konstruowanie przenoszące, jak i przypisanie przenoszące `T` są `noexcept`
+(funkcja używa obu tych operacji). Wymaga to nagłówków `<utility>` i `<type_traits>`.
 
 ***
 
@@ -2580,7 +2568,7 @@ struct Punkt
     Punkt() {}
 
     Punkt(int x, int y)
-        : a(x), b(y) {} // ← "poprawiony błąd 'x(a), y(b)' z przykładu z wikipedii."
+        : a(x), b(y) {}
 };
 
 union MojaUnia
@@ -2639,7 +2627,7 @@ gdzie głęboko zagnieżdżone przestrzenie nazw są powszechne.
 > **Uwaga:** skrócona składnia służy wyłącznie do **definiowania** przestrzeni nazw.
 > Dostęp do elementów nadal używa `::`, np. `Firma::Modul::Szczegoly::funkcja()`.
 
-##### Uzupełnienie (C++20): **`inline`** w zagnieżdżonych przestrzeniach nazw
+##### Uzupełnienie (C++20): `inline` w zagnieżdżonych przestrzeniach nazw
 
 C++20 rozszerza składnię z C++17, pozwalając używać `inline` również w skróconej formie zagnieżdżonych przestrzeni nazw:
 ```cpp
@@ -2648,14 +2636,14 @@ namespace Firma::inline V2::Szczegoly
     void funkcja();
 }
 ```
-To zachowuje wszystkie właściwości `inline namespace` (m.in. automatyczne „eksportowanie” nazw z przestrzeni `V2`), a jednocześnie pozwala korzystać z czytelnej składni wprowadzonej w C++17.
+To zachowuje wszystkie właściwości `inline namespace` (przestrzeni nazw, której nazwy są widoczne tak, jakby należały do przestrzeni nadrzędnej — używa się jej m.in. do wersjonowania bibliotek) (m.in. automatyczne „eksportowanie” nazw z przestrzeni `V2`), a jednocześnie pozwala korzystać z czytelnej składni wprowadzonej w C++17.
 
 ***
 
 #### (C++17): `if constexpr` — kompilacyjne rozgałęzianie kodu
 
 W szablonach często chcemy wykonać różny kod w zależności od właściwości typu.
-Przed C++17 wymagało to specjalizacji szablonów lub techniki SFINAE (Substitution Failure Is Not An Error — mechanizm, w którym nieudana podstawienie typu powoduje odrzucenie przeciążenia, a nie błąd kompilacji) — obu skomplikowanych.
+Przed C++17 wymagało to specjalizacji szablonów lub techniki SFINAE (Substitution Failure Is Not An Error — mechanizm, w którym nieudane podstawienie typu powoduje odrzucenie przeciążenia, a nie błąd kompilacji) — obu skomplikowanych.
 
 Przykład problemu w C++11/14 — funkcja wypisująca wartość, inaczej dla liczb i napisów:
 ```cpp
@@ -2668,7 +2656,7 @@ void wypisz(std::string val) { std::cout << '"' << val << '"'; }
 ```
 
 C++17 wprowadza `if constexpr` — instrukcję warunkową ewaluowaną **w czasie kompilacji**.
-Gałąź, której warunek jest fałszywy, **nie jest kompilowana** dla danej instancji szablonu:
+Gałąź, której warunek jest fałszywy, **nie jest instancjonowana** (nie jest w pełni kompilowana) dla danej instancji szablonu:
 ```cpp
 #include <type_traits>
 
@@ -2687,7 +2675,7 @@ void wypisz(T val)
 ```
 
 Kluczowa różnica względem zwykłego `if`: odrzucona gałąź **nie musi być poprawna**
-dla danego typu — kompilator jej nie sprawdza. Dzięki temu można w jednej funkcji
+dla danego typu — kompilator nie sprawdza konstrukcji zależnych od parametru szablonu (składnia musi jednak być poprawna). Dzięki temu można w jednej funkcji
 używać operacji dostępnych tylko dla niektórych typów:
 ```cpp
 template <typename T>
@@ -2703,8 +2691,9 @@ auto pobierzWartosc(T t)
 Bez `if constexpr` kompilator próbowałby skompilować `*t` nawet dla typów
 niebędących wskaźnikami i zgłaszał błąd.
 
-> **Uwaga:** `if constexpr` działa tylko w szablonach. Poza szablonem zachowuje się
-> jak zwykły `if` — obie gałęzie muszą być poprawne składniowo i typowo.
+> **Uwaga:** odrzucanie gałęzi działa tylko dla konstrukcji **zależnych od parametru szablonu**.
+> Poza szablonem (lub gdy warunek nie zależy od parametrów) obie gałęzie są w pełni sprawdzane,
+> więc `if constexpr` zachowuje się tam jak zwykły `if` z warunkiem stałym.
 
 ***
 
@@ -2762,7 +2751,7 @@ x = 10;            // modyfikuje p.x
 
 Structured bindings działają dla:
 
-* agregatów (struktury bez konstruktorów użytkownika),
+* klas i struktur, w których wszystkie niestatyczne pola są publiczne i pochodzą z jednej klasy (bez pól prywatnych),
 * typów z `std::tuple_size` i `std::get` (krotki, pary),
 * tablic C-stylowych o znanym rozmiarze.
 
@@ -2836,7 +2825,7 @@ for (using Wpis = std::pair<int, std::string>; const Wpis& w : lista)
     std::cout << w.first << " " << w.second << "\n";
 }
 ```
-Dotyczy to wyłącznie zapisu `using`, a nie starszego `typedef`.
+Wcześniej w tym miejscu można było użyć `typedef` (jest zwykłą deklaracją), ale nie aliasu `using` — C++23 usuwa tę niespójność.
 
 ***
 
@@ -2901,21 +2890,20 @@ Opakowanie(T) -> Opakowanie<T>;
 Opakowanie o(42);  // deduuje Opakowanie<int>
 ```
 
-Standardowa biblioteka C++17 dostarcza przewodniki dedukcji dla wszystkich
-swoich szablonów (`std::vector`, `std::map`, `std::pair` itd.), dzięki czemu
-funkcje pomocnicze jak `std::make_pair` stają się w większości przypadków zbędne.
+Standardowa biblioteka C++17 dostarcza przewodniki dedukcji dla swoich szablonów tam,
+gdzie dedukcja z konstruktorów nie wystarcza (np. kontenery tworzone z pary iteratorów),
+dzięki czemu funkcje pomocnicze jak `std::make_pair` często stają się zbędne
+(choć `make_pair` robi też m.in. `decay` argumentów, więc nie zawsze jest równoważne).
 
-##### Uzupełnienie (C++20): CTAD dla klas dziedziczących i aliasów szablonów
+##### Uzupełnienie (C++20): CTAD dla agregatów i aliasów szablonów
 
-C++20 rozszerza CTAD, umożliwiając dedukcję typów również dla:
-* **klas dziedziczących po szablonach**, np.:
+C++20 rozszerza CTAD, umożliwiając dedukcję typów również dla agregatów i aliasów szablonów:
+* **agregatów** — kompilator tworzy przewodnik dedukcji na podstawie pól agregatu:
 ```cpp
 template <typename T>
-struct Baza { T x; };
+struct Para { T pierwszy; T drugi; };
 
-struct Pochodna : Baza<int> {};
-
-Pochodna p{42};   // C++20: dedukcja działa poprawnie
+Para p{1, 2};   // C++20: dedukuje Para<int>; w C++17 trzeba było napisać własny przewodnik dedukcji
 ```
 
 * **aliasów szablonów**, np.:
@@ -3028,16 +3016,16 @@ struct Konfiguracja
 {
     static const int MAX = 100;      // deklaracja w klasie
 };
-const int Konfiguracja::MAX;         // definicja wymagana w .cpp
+const int Konfiguracja::MAX;         // osobna definicja w .cpp — wymagana, gdy obiekt jest używany tak, że potrzebny jest jego adres (odr-use)
 
 // C++17
 struct Konfiguracja
 {
-    static inline int MAX = 100;     // definicja bezpośrednio w klasie
+    static inline const int MAX = 100;   // definicja bezpośrednio w klasie
 };
 ```
 
-Zmienne `constexpr` na poziomie klasy są od C++17 **niejawnie `inline`**,
+**Statyczne składowe klasy** oznaczone `constexpr` są od C++17 **niejawnie `inline`**,
 więc ten konkretny przypadek nie wymaga jawnego `inline`.
 
 ***
@@ -3088,7 +3076,8 @@ lub przenoszącego.
 NieKopiowalny stworz2()
 {
     NieKopiowalny lokalny; // nazwana zmienna
-    return lokalny;        // NRVO — opcjonalne, zależne od kompilatora
+    return lokalny;        // błąd kompilacji (także w C++17): NRVO jest opcjonalne, więc
+                           // konstruktor kopiujący lub przenoszący musi być dostępny — a tu jest usunięty
 }
 ```
 
@@ -3126,7 +3115,7 @@ sprawdzane w czasie kompilacji. Pozwalają one:
 ```cpp
 #include <concepts>
 
-// Koncept: typ T musi obsługiwać operator+ i zwracać T
+// Koncept: typ T musi obsługiwać operator+, a wynik dodawania musi dać się przekonwertować na T
 template <typename T>
 concept Dodawalny = requires(T a, T b)
 {
@@ -3143,7 +3132,7 @@ musi być konwertowalny do `T`.
 
 ##### Używanie konceptu
 
-Trzy równoważne sposoby zastosowania konceptu:
+Trzy sposoby zastosowania konceptu (trzeci nie jest w pełni równoważny — patrz uwaga niżej):
 ```cpp
 // Sposób 1: requires po liście parametrów szablonu
 template <typename T>
@@ -3157,6 +3146,9 @@ T suma(T a, T b) { return a + b; }
 // Sposób 3: skrócona składnia (abbreviated function template)
 auto suma(Dodawalny auto a, Dodawalny auto b) { return a + b; }
 ```
+
+> **Uwaga:** w sposobie 3 każde `auto` to **osobny parametr szablonu**, więc `a` i `b` mogą mieć różne typy
+> (np. `int` i `double`), o ile oba spełniają koncept. W sposobach 1 i 2 oba argumenty mają ten sam typ `T`.
 
 Teraz wywołanie z nieprawidłowym typem daje czytelny błąd:
 ```cpp
@@ -3193,9 +3185,9 @@ std::equality_comparable<T>      // T obsługuje == i !=
 std::totally_ordered<T>          // T obsługuje pełne porównanie
 std::copyable<T>                 // T można kopiować
 std::movable<T>                  // T można przenosić
-std::regular<T>                  // T jest kopiowalne, przenoszalne i equality_comparable
+std::regular<T>                  // T jest domyślnie inicjalizowalny, kopiowalny i porównywalny na równość (==, !=)
 std::invocable<F, Args...>       // F można wywołać z argumentami Args
-std::predicate<F, Args...>       // F zwraca bool dla Args
+std::predicate<F, Args...>       // F wywołany z Args... daje wynik, którego można użyć jako warunku (bool)
 ```
 
 ***
@@ -3218,7 +3210,7 @@ concept Kontener = requires(T c)
     // Wymaganie złożone: wyrażenie musi być poprawne i mieć określony typ
     { c.size() } -> std::convertible_to<std::size_t>;
 
-    // Wymaganie noexcept: wyrażenie musi być noexcept
+    // Wymaganie złożone z noexcept: wyrażenie musi być dodatkowo noexcept
     { c.empty() } noexcept -> std::convertible_to<bool>;
 
     // Wymaganie zagnieżdżone: dodatkowy warunek, który też musi być spełniony
@@ -3263,7 +3255,7 @@ void f(T x);
 ```
 
 Koncepty są preferowanym sposobem ograniczania szablonów w C++20 i nowszych.
-SFINAE nadal działa, ale jest uważane za przestarzały idiom w nowym kodzie.
+SFINAE nadal działa, ale w nowym kodzie jest wypierane przez koncepty (są czytelniejsze i dają lepsze komunikaty błędów).
 
 ***
 
@@ -3342,7 +3334,7 @@ export namespace geo
 
 ***
 
-##### Podmoduły i partycje
+##### Partycje modułów
 
 Duże moduły można dzielić na **partycje**:
 ```cpp
@@ -3381,9 +3373,9 @@ import "moj.h";     // importuje lokalny nagłówek jako moduł
 > **Uwaga praktyczna:** wsparcie kompilatorów dla modułów w C++20 jest wciąż
 > niekompletne lub wymaga specjalnej konfiguracji systemu budowania.
 > GCC 11+, Clang 16+ i MSVC 2019+ mają podstawowe wsparcie.
-> Pełne wsparcie narzędzi budowania (CMake, Make) pojawiło się stopniowo
-> po 2022 roku. W nowych projektach warto już używać modułów,
-> ale migracja istniejących dużych projektów wymaga czasu.
+> Wsparcie narzędzi budowania pojawiało się stopniowo po 2022 roku (np. CMake z generatorem Ninja
+> od wersji 3.28); klasyczne pliki Makefile radzą sobie z modułami słabo.
+> W nowych projektach można już rozważyć moduły, ale migracja istniejących dużych projektów wymaga czasu.
 
 ##### (C++23): moduły standardowe `std` i `std.compat`
 
@@ -3419,8 +3411,8 @@ zawieszenia i kontynuować.
 ##### Trzy nowe słowa kluczowe
 
 * `co_return` — kończy korutynę i opcjonalnie zwraca wartość,
-* `co_yield` — zawiesza korutynę i zwraca wartość pośrednią (jak iterator),
-* `co_await` — zawiesza korutynę i czeka na zakończenie operacji asynchronicznej.
+* `co_yield` — zawiesza korutynę i przekazuje wartość odbiorcy (np. kolejny element generatora),
+* `co_await` — czeka na zakończenie operacji asynchronicznej (jeśli wynik nie jest jeszcze gotowy, zawiesza korutynę).
 
 Każda funkcja zawierająca którekolwiek z tych słów kluczowych
 jest automatycznie korutyną.
@@ -3482,14 +3474,14 @@ wątek może w tym czasie wykonywać inne korutyny.
 
 ##### Jak działają korutyny wewnętrznie
 
-Kompilator przekształca korutynę w obiekt zawierający:
+Kompilator tworzy dla korutyny następujące elementy:
 
 * **ramkę korutyny** (_coroutine frame_) — stan lokalnych zmiennych
   i miejsce zawieszenia,
 * obiekt **promise** — kontroluje zachowanie korutyny
   (co zwraca, jak się zawiesza, jak obsługuje wyjątki),
-* obiekt **handle** (`std::coroutine_handle`) — pozwala wznowić
-  lub zniszczyć zawieszoną korutynę.
+* **uchwyt** (`std::coroutine_handle`) — niewłaścicielski „wskaźnik” do ramki korutyny;
+  pozwala wznowić lub zniszczyć zawieszoną korutynę (trzymany zwykle w obiekcie zwracanym przez korutynę).
 
 C++20 dostarcza tylko **niskopoziomowe mechanizmy** (`co_await`, `co_yield`,
 `co_return`, `std::coroutine_handle`, `std::suspend_always`, `std::suspend_never`).
@@ -3511,7 +3503,7 @@ dostarczone przez bibliotekę lub napisane przez programistę.
 > **Uwaga praktyczna:** korutyny w C++20 to mechanizm niskopoziomowy.
 > W praktyce używa się ich przez biblioteki wyższego poziomu:
 > **cppcoro**, **Asio** (Boost/standalone), **libcoro**, lub frameworki
-> jak Qt (od wersji 6.5) i POCO. Bezpośrednie pisanie własnych typów
+> jak **QCoro** (korutyny w Qt). Bezpośrednie pisanie własnych typów
 > promise jest skomplikowane i zazwyczaj niepotrzebne.
 
 ***
@@ -3535,8 +3527,8 @@ Punkt q = { .x = 1, .y = 2, .z = 3 };
 Zalety względem zwykłej inicjalizacji agregatowej:
 
 * kod jest samodokumentujący — widać które pole otrzymuje którą wartość,
-* zmiana kolejności pól w strukturze nie psuje istniejącego kodu
-  (kompilator zgłosi błąd jeśli nazwy się nie zgadzają),
+* kolejność wartości nie musi być zgadywana z definicji struktury — a gdy ktoś zmieni kolejność pól
+  lub nazwę pola, kompilator zgłosi błąd zamiast po cichu zamienić wartości,
 * pola pominięte otrzymują wartość domyślną.
 
 **Ważne ograniczenia:**
@@ -3606,7 +3598,9 @@ if (wynik > 0)  std::cout << "a > b"; // wynik == std::strong_ordering::greater
 **Automatyczne generowanie operatorów porównania:**
 
 Najważniejsza praktyczna zaleta: zdefiniowanie `operator<=>` w klasie
-automatycznie generuje wszystkie sześć operatorów porównania.
+daje operatory `<`, `>`, `<=` i `>=` (kompilator przepisuje je na `<=>`).
+Operatory `==` i `!=` pochodzą z `operator==`, który kompilator generuje automatycznie
+tylko wtedy, gdy `operator<=>` zadeklarowano jako `= default`.
 Dodanie `= default` pozwala kompilatorowi wygenerować porównanie
 pole po polu:
 ```cpp
@@ -3652,6 +3646,8 @@ struct NapisCI // porównanie case-insensitive
 > Jeśli definiujesz `<=>` ręcznie, musisz też zdefiniować `==` osobno — kompilator go nie wygeneruje.
 
 ##### Uzupełnienie (C++23): łagodniejsze przepisywanie operatora `==`
+
+(Zmiana przyjęta do C++23 jako poprawka, którą kompilatory stosują zwykle także w trybie C++20.)
 
 W C++20 kompilator potrafi automatycznie przepisać wyrażenie `a == b` na wersję odwróconą
 `b == a` oraz wygenerować `!=` na podstawie `==`. W klasach, które miały własne, ręcznie napisane
@@ -3773,6 +3769,9 @@ operatora przecinka (i był przestarzały). Dla macierzy trzeba było pisać `m(
 
 C++23 pozwala, aby `operator[]` przyjmował **dowolną liczbę argumentów**:
 ```cpp
+#include <cstddef>
+#include <vector>
+
 class Macierz
 {
 public:
@@ -4817,15 +4816,48 @@ Ogólne zasady (z pewnymi wyjątkami):
 
 Zalecenie: atrybuty **nie powinny zmieniać semantyki programu** — kod powinien zachowywać ten sam sens nawet wtedy, gdy atrybuty zostaną zignorowane.
 Atrybuty służą głównie do przekazywania kompilatorowi dodatkowych informacji (diagnostyka, optymalizacje, analiza kodu).
+Nie jest to reguła bez wyjątków: np. `[[noreturn]]` i `[[assume]]` wpływają na generowany kod,
+a `[[no_unique_address]]` może zmienić układ obiektu w pamięci.
 
 C++11 definiuje dwa standardowe atrybuty:
 
-* `[[noreturn]]` — informuje, że funkcja **nie zwraca** (np. funkcja kończąca program),
+* `[[noreturn]]` — informuje, że funkcja **nie zwraca** (np. funkcja kończąca program):
+```cpp
+[[noreturn]] void zakoncz(const char* komunikat)
+{
+    std::cerr << komunikat << "\n";
+    std::exit(1);   // funkcja nigdy nie wraca do miejsca wywołania
+}
+```
+  Dzięki temu kompilator wie, że kod po wywołaniu `zakoncz(...)` jest nieosiągalny, i nie ostrzega
+  np. o braku instrukcji `return` w dalszej części funkcji,
 * `[[carries_dependency]]` — pomaga optymalizować kod wielowątkowy, wskazując, że argumenty funkcji lub wartość zwracana **niosą zależność pamięciową**.
 
 > **Ostrzeżenie:** chociaż atrybuty są bezpiecznym mechanizmem rozszerzeń, używanie vendor‑specyficznych atrybutów może zmniejszyć przenośność kodu. Zawsze sprawdź, czy atrybut ma znaczenie w docelowych kompilatorach.
 
-##### Uzupełnienie (C++14): atrybut `[[deprecated]]`
+##### Rozszerzalność atrybutów
+
+Standard C++ dopuszcza dodawanie nowych atrybutów w przyszłych wersjach języka.
+Już dziś niektóre kompilatory mają własne rozszerzenia, które:
+
+* podpowiadają optymalizacje,
+* dodają metadane dla debuggera lub linkera,
+* wprowadzają atrybuty bezpieczeństwa,
+* wspierają _reflection_ (programowanie refleksyjne),
+* dodają informacje potrzebne do współpracy z innymi językami.
+
+Takie rozszerzenia mogą przyjmować parametry w nawiasach, np.:
+```cpp
+[[gnu::hot]]
+[[clang::annotate("info")]]
+```
+
+Rozszerzenia specyficzne dla kompilatora powinny mieć własną przestrzeń nazw atrybutu (np. `gnu::`, `clang::`);
+w starszych, niestandardowych słowach kluczowych stosuje się prefiks `__` (np. `__attribute__`).
+
+***
+
+##### (C++14): atrybut `[[deprecated]]`
 
 C++14 wprowadza atrybut:
 ```cpp
@@ -4841,9 +4873,9 @@ Atrybut `[[deprecated]]` może być stosowany do:
 * metod klas,
 * zmiennych,
 * pól klas,
-* typów,
-* przestrzeni nazw,
-* szablonów.
+* typów (klas, `typedef`, wyliczeń),
+* specjalizacji szablonów,
+* przestrzeni nazw i elementów wyliczenia — składnia atrybutów w tych miejscach jest dozwolona od C++17 (patrz niżej).
 
 Przykład:
 ```cpp
@@ -4874,7 +4906,7 @@ namespace [[deprecated]] stareApi
 enum class Kolor
 {
     Czerwony,
-    Zielony [[deprecated]],  // konkretny element wyliczenia (iterator) oznaczony jako przestarzały
+    Zielony [[deprecated]],  // konkretny element wyliczenia (ang. enumerator) oznaczony jako przestarzały
     Niebieski
 };
 ```
@@ -4883,37 +4915,134 @@ Przed C++17 atrybuty przy przestrzeniach nazw i elementach wyliczenia były nied
 
 ***
 
-##### **Uzupełnienie (C++17): atrybuty `[[fallthrough]]`, `[[nodiscard]]`, `[[maybe_unused]]`**
+##### (C++17): atrybuty `[[fallthrough]]`, `[[nodiscard]]`, `[[maybe_unused]]`
 
-C++17 dodaje trzy ważne atrybuty:
+C++17 dodaje trzy standardowe atrybuty, które pomagają kompilatorowi wykrywać błędy
+i jednocześnie unikać zbędnych ostrzeżeń.
 
-* `[[fallthrough]]` — oznacza zamierzone „przejście” między sekcjami `case` w `switch`,
-* `[[nodiscard]]` — oznacza, że wartość zwracana **nie powinna być ignorowana**,
-* `[[maybe_unused]]` — oznacza, że element **może nie być używany**, co zapobiega ostrzeżeniom.
+###### `[[nodiscard]]` — wartość zwracana nie powinna być ignorowana
 
-Przykład:
+Wiele błędów bierze się stąd, że programista wywołuje funkcję i nie sprawdza jej wyniku
+(np. kodu błędu) albo zakłada, że funkcja coś zmienia, choć ona tylko zwraca wartość.
+Atrybut `[[nodiscard]]` sprawia, że kompilator ostrzega, gdy wynik zostanie zignorowany:
 ```cpp
-[[nodiscard]] int policz();
+[[nodiscard]] int policz();   // wynik trzeba wykorzystać
+
+void test()
+{
+    policz();            // ostrzeżenie: zignorowano wartość zwróconą przez funkcję oznaczoną [[nodiscard]]
+    int n = policz();    // poprawnie — wynik został użyty
+    (void)policz();      // jawne zignorowanie wyniku — to wycisza ostrzeżenie
+}
 ```
+
+Atrybut można też przypisać do **typu** — wtedy ostrzeżenie dotyczy każdej funkcji,
+która zwraca ten typ przez wartość:
+```cpp
+struct [[nodiscard]] KodBledu
+{
+    int kod;
+};
+
+KodBledu otworzPlik();   // wywołanie bez użycia wyniku da ostrzeżenie
+```
+
+###### Uzupełnienie (C++20): `[[nodiscard]]` z uzasadnieniem i przy konstruktorach
+
+C++20 pozwala dodać do atrybutu **tekst wyjaśniający**, który kompilator wyświetli w ostrzeżeniu,
+oraz oznaczać nim konstruktory (ostrzeżenie, gdy utworzony obiekt jest od razu odrzucany):
+```cpp
+[[nodiscard("Wynik zawiera kod błędu, którego nie wolno ignorować")]]
+int zapisz(const char* sciezka);
+```
+Od C++20 wiele funkcji biblioteki standardowej jest oznaczonych `[[nodiscard]]`
+(np. `std::vector::empty()`, które tylko sprawdza stan — a łatwo je pomylić z `clear()`).
+
+###### `[[maybe_unused]]` — element może nie być używany
+
+Kompilatory ostrzegają o nieużywanych parametrach i zmiennych. Czasem jednak brak użycia
+jest zamierzony — np. zmienna jest używana tylko w `assert`, który w wersji release znika z kodu:
+```cpp
+void przetworz([[maybe_unused]] int zarezerwowane, int liczba)   // parametr celowo nieużywany
+{
+    [[maybe_unused]] int kontrola = liczba * 2;   // używana tylko w assert
+    assert(kontrola > 0);                         // przy NDEBUG assert jest usuwany — bez atrybutu byłoby ostrzeżenie
+}
+```
+Atrybut można stosować do zmiennych, parametrów, funkcji, typów, pól, elementów wyliczenia
+oraz nazw w wiązaniach strukturalnych.
+
+###### `[[fallthrough]]` — zamierzone przejście do następnego `case`
+
+Klasyczny błąd w `switch` to **zapomniany `break`** — wykonanie „przepada” do następnej etykiety.
+Kompilatory potrafią o tym ostrzegać (np. `-Wimplicit-fallthrough`), ale ostrzeżenie byłoby uciążliwe,
+gdy przejście jest celowe. Atrybut `[[fallthrough]];` jawnie pokazuje, że tak ma być:
+```cpp
+switch (poziom)
+{
+    case 3:
+        wlaczAlarm();
+        [[fallthrough]];   // zamierzone: wykonaj też kod z "case 2"
+    case 2:
+        zapiszLog();
+        break;
+    default:
+        break;
+}
+```
+Atrybut zapisuje się jako osobną instrukcję (ze średnikiem) tuż przed następną etykietą.
+
+###### Uzupełnienie (C++17): `using` w atrybutach i nieznane atrybuty
+
+* Zapis `[[using gnu: hot, always_inline]]` oznacza to samo co `[[gnu::hot, gnu::always_inline]]` —
+  nie trzeba powtarzać nazwy przestrzeni nazw atrybutu.
+* Atrybut, którego kompilator nie zna, jest **ignorowany** (kompilator może najwyżej wypisać ostrzeżenie).
+  Dzięki temu kod z atrybutami jednego kompilatora kompiluje się w innym; w C++11 zachowanie
+  w takim przypadku było zależne od implementacji.
 
 ***
 
-##### **Uzupełnienie (C++20): atrybut `[[likely]]` i `[[unlikely]]`**
+##### (C++20): atrybuty `[[likely]]` i `[[unlikely]]`
 
-C++20 dodaje atrybuty podpowiadające kompilatorowi przewidywanie gałęzi:
+Nowoczesne procesory „zgadują”, którą gałąź instrukcji warunkowej wykona program,
+i z wyprzedzeniem przygotowują kolejne instrukcje (tzw. _branch prediction_ — przewidywanie skoków).
+Dobre zgadnięcie przyspiesza program, a pomyłka kosztuje kilkanaście cykli procesora.
+C++20 pozwala podpowiedzieć kompilatorowi, która gałąź jest bardziej (lub mniej) prawdopodobna:
 ```cpp
-if ([[likely]] warunek)
+if (liczbaElementow > 0) [[likely]]   // zwykle są dane do przetworzenia
 {
-    ...
+    przetworz();
 }
-else [[unlikely]]
+else [[unlikely]]                     // pusta lista to rzadki przypadek
 {
-    ...
+    obsluzBrakDanych();
 }
 ```
+Atrybut zapisuje się **po warunku** (przed instrukcją danej gałęzi), a nie wewnątrz nawiasów.
+Można go też użyć przy etykiecie `case`:
+```cpp
+switch (kod)
+{
+    [[likely]] case 1:     // kod == 1 jest znacznie częstszy niż pozostałe
+        obsluzTypowy();
+        break;
+    case 2:
+        obsluzInny();
+        break;
+}
+```
+
+Zasady i uwagi:
+
+* to tylko **podpowiedź** — kompilator może ją zignorować, a program zawsze działa poprawnie,
+  nawet gdy podpowiedź jest błędna (zmienia się tylko szybkość),
+* nie wolno oznaczyć obu przeciwstawnych gałęzi tak, by sprzeczne podpowiedzi dotyczyły tej samej ścieżki,
+* używaj ich dopiero po zmierzeniu wydajności — w typowym kodzie nowoczesne procesory
+  przewidują skoki dobrze i zysk bywa niewielki.
+
 ***
 
-##### Uzupełnienie (C++20): atrybut `[[no_unique_address]]`
+##### (C++20): atrybut `[[no_unique_address]]`
 
 W C++ każdy obiekt musi mieć unikalny adres, nawet jeśli nie ma żadnych pól
 (pusta klasa zajmuje co najmniej 1 bajt). Powoduje to marnowanie pamięci
@@ -4939,6 +5068,16 @@ struct ZAtrybutem
 // sizeof(ZAtrybutem) == 4 (typowo)
 ```
 
+Dotychczas ten sam efekt uzyskiwano przez **dziedziczenie po pustej klasie** (optymalizacja pustej klasy bazowej,
+_EBO_), co było mniej czytelne i nie zawsze możliwe (np. dla klas `final`).
+
+Uwagi:
+
+* dwa pola **tego samego** pustego typu nadal muszą mieć różne adresy, więc jedno z nich zajmie miejsce,
+* atrybut zmienia układ obiektu w pamięci, więc ma znaczenie dla zgodności binarnej (ABI),
+* kompilator MSVC ignoruje standardowy `[[no_unique_address]]`; ma własny odpowiednik
+  `[[msvc::no_unique_address]]`.
+
 Używane wewnętrznie przez implementacje STL do optymalizacji kontenerów
 z niestandardowymi alokatorami i komparatorami.
 
@@ -4949,20 +5088,25 @@ z niestandardowymi alokatorami i komparatorami.
 C++23 wprowadza atrybut, który pozwala **obiecać kompilatorowi**, że w danym miejscu
 pewien warunek jest prawdziwy:
 ```cpp
-int podziel(int a, int b)
+void wyzeruj(float* dane, int n)
 {
-    [[assume(b != 0)]];   // obietnica: b nigdy nie jest zerem
-    return a / b;         // kompilator może pominąć sprawdzanie dzielenia przez zero
+    [[assume(n > 0 && n % 8 == 0)]];   // obietnica: n jest dodatnie i podzielne przez 8
+
+    for (int i = 0; i < n; ++i)
+    {
+        dane[i] = 0.0f;   // kompilator może pominąć obsługę „reszty” pętli i łatwiej ją zwektoryzować
+    }
 }
 ```
+Atrybut zapisuje się jako osobną instrukcję: `[[assume(wyrażenie)]];`.
 
 Ważne:
 
 * **to nie jest asercja** — warunek **nie jest sprawdzany** w czasie działania programu
   i nie wolno na nim polegać jako na zabezpieczeniu,
 * jeśli warunek w rzeczywistości jest fałszywy, zachowanie programu jest **niezdefiniowane**,
-* wyrażenie z atrybutu nie jest wykonywane, więc nie powinno mieć skutków ubocznych
-  (a jeśli je ma, są ignorowane),
+* wyrażenie z atrybutu **nie jest obliczane** w czasie działania programu, więc jego skutki uboczne
+  (np. wywołanie funkcji zmieniającej stan) nigdy nie wystąpią — nie należy ich w nim umieszczać,
 * używaj go tylko tam, gdzie warunek jest prawdziwy z całą pewnością, a pomiar wykazał,
   że optymalizacja jest potrzebna.
 
@@ -4971,7 +5115,8 @@ Wcześniej ten sam efekt dawały rozszerzenia kompilatorów: `__builtin_assume` 
 
 ##### (C++23): `std::unreachable`
 
-Funkcja `std::unreachable()` z nagłówka `<utility>` oznacza miejsce, do którego
+Choć `std::unreachable()` nie jest atrybutem, służy temu samemu celowi co `[[assume]]` —
+jest równoważna `[[assume(false)]]`. Funkcja z nagłówka `<utility>` oznacza miejsce, do którego
 **wykonanie nigdy nie powinno dojść**. Dojście do niej to niezdefiniowane zachowanie —
 ale dzięki temu kompilator może pominąć zbędne gałęzie:
 ```cpp
@@ -4989,6 +5134,9 @@ int znak(Kierunek k)
 }
 ```
 Jest to standardowy odpowiednik `__builtin_unreachable()` (GCC/Clang) i `__assume(false)` (MSVC).
+Uwaga: jeśli do funkcji trafi wartość spoza wyliczenia (np. po błędnym rzutowaniu), program będzie
+miał niezdefiniowane zachowanie zamiast czytelnego błędu — w kodzie, któremu nie ufasz,
+lepiej obsłużyć taki przypadek jawnie.
 
 ##### Uzupełnienie (C++23): powtarzające się atrybuty
 
